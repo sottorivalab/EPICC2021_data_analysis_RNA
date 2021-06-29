@@ -1,0 +1,245 @@
+---
+title: "Gene Expression Clustering"
+author: "Dr Jacob Househam"
+date: "21/06/2021"
+output: html_document
+---
+
+```{r library}
+library(data.table);library(DESeq2);library(wesanderson);library(analogue);library(stringr)
+library(pheatmap);library(dplyr);library(biomaRt);library(cluster);library(jsonlite);library(clusterProfiler)
+```
+
+```{r setup}
+ngroupcol = c(wes_palette("Darjeeling2",5)[2],wes_palette('Darjeeling1',5)[2],wes_palette('FantasticFox1',5)[c(5,2)])
+names(ngroupcol) <- as.numeric(c(1:4))
+col_list <- list(MSI_Status=c(MSI='#01DADF',MSS='#FF9288'),Group=ngroupcol)
+```
+
+## Load in data
+```{r loading}
+# Load samples data and sort out normal/tumour MSS/MSI samples
+passsam <- read.table('input_files/ListRNAPass.EPICC.txt')[,1]
+tsam <- passsam[-grep('^C\\d+_E',passsam)]
+allpats <- gsub('^(C\\d+)_\\S+','\\1',tsam);patients <- unique(allpats);numsam <- table(allpats)
+tsam <- tsam[which(allpats %in% names(which(numsam>=5)))]
+allpats <- gsub('^(C\\d+)_\\S+','\\1',tsam);patients <- unique(allpats);numsam <- table(allpats)
+msipat <- c('C516','C518','C536','C548','C552')
+normsam <- passsam[grep('^C\\d+_E',passsam)];allnormpats <- gsub('^(C\\d+)_\\S+','\\1',normsam)
+normsam <- normsam[which(allnormpats %in% allpats)]
+
+# Filter out genes which aren't expressed or are negatively correlated with purity
+vsd <- readRDS('input_files/allgenes.vsd.ensembl.rds')
+filpurens <- readRDS(file='input_files/filteredgenes.5perAL10TPM.pospur.rds')
+geneexp <- as.data.frame(assay(vsd))[filpurens,tsam]
+geneexp_norm <- as.data.frame(assay(vsd))[filpurens,normsam]
+```
+
+
+## Calculate mean expression and mean standard deviation per gene
+```{r get_mean_and_sd}
+combgen <-  row.names(geneexp)
+expmat <- as.data.frame(matrix(0L,nrow=length(row.names(geneexp)),ncol=length(patients)))
+row.names(expmat) <- row.names(geneexp);colnames(expmat) <- patients
+sdmat <- expmat
+for(pat in patients) {
+  patsam <- tsam[grep(pat,tsam)];patexp <- geneexp[,patsam]
+  expmat[[pat]] <- rowMeans(as.matrix(patexp))-min(geneexp)
+  sdmat[[pat]] <- apply(patexp,1,function(x) sd(x))
+}
+normexp <- rowMeans(as.matrix(geneexp_norm))-min(geneexp_norm)
+
+genedf <- data.frame(Mean_Var=rowMeans(as.matrix(sdmat)),Mean_Mean_Exp=rowMeans(as.matrix(log(expmat+1))),
+                     Mean_Norm=log(normexp+1))
+row.names(genedf) <- row.names(expmat)
+```
+
+## Use BioMart to map ensembl IDs to symbol and entrez
+```{r map_gene_ids}
+ensembl <- useEnsembl(biomart='ensembl',dataset='hsapiens_gene_ensembl',version=90)
+geneMap <- getBM(attributes=c('ensembl_gene_id','entrezgene','hgnc_symbol'),mart=ensembl,filters='ensembl_gene_id',values=row.names(genedf))
+geneMap <- geneMap[-which(geneMap$entrezgene=='728635'),] 
+
+# Deal with duplicated ensembl ids
+dupens <- geneMap[which(duplicated(geneMap$ensembl_gene_id)),'ensembl_gene_id']
+uniqmap <- geneMap[which(geneMap$ensembl_gene_id %ni% dupens),];row.names(uniqmap) <- c(1:nrow(uniqmap))
+newens <- useEnsembl(biomart='ensembl',dataset='hsapiens_gene_ensembl')
+newMap <- getBM(attributes=c('ensembl_gene_id','entrezgene_id','hgnc_symbol'),mart=newens,filters='ensembl_gene_id',values=dupens);colnames(newMap) <- c('ensembl_gene_id','entrezgene','hgnc_symbol')
+for(gene in unique(dupens)) {
+  curnew <- newMap[which(newMap$ensembl_gene_id==gene),]
+  curdup <- geneMap[which(geneMap$ensembl_gene_id==gene),]
+  if(nrow(curnew)==1) {
+    uniqmap[nrow(uniqmap)+1,] <- curnew
+  } else if(min(nchar(curdup$entrezgene))<=6 & max(nchar(curdup$entrezgene))>=9) {
+    uniqmap[nrow(uniqmap)+1,] <- curdup[which.min(nchar(curdup$entrezgene)),]
+  } else {
+    if(gene=='ENSG00000004866') { uniqmap[nrow(uniqmap)+1,] <- c('ENSG00000004866','7982','ST7')}
+    if(gene=='ENSG00000111850') { uniqmap[nrow(uniqmap)+1,] <- c('ENSG00000111850','57150','SMIM8')}
+    if(gene=='ENSG00000143702') { uniqmap[nrow(uniqmap)+1,] <- c('ENSG00000143702','9859','CEP170')}
+    if(gene=='ENSG00000205571') { uniqmap[nrow(uniqmap)+1,] <- c('ENSG00000205571','6607','SMN2')}
+    if(gene=='ENSG00000276070') { uniqmap[nrow(uniqmap)+1,] <- c('ENSG00000276070','9560','CCL4L2')}
+    if(gene=='ENSG00000276085') { uniqmap[nrow(uniqmap)+1,] <- c('ENSG00000276085','414062','CCL3L3')}
+  }
+}
+
+# Deal with missing symbol ids
+newMap <- getBM(attributes=c('ensembl_gene_id','entrezgene_id','hgnc_symbol'),mart=newens,filters='ensembl_gene_id',values=uniqmap$ensembl_gene_id[which(uniqmap$hgnc_symbol=='')]);colnames(newMap) <- c('ensembl_gene_id','entrezgene','hgnc_symbol')
+uniqmap[match(newMap$ensembl_gene_id,uniqmap$ensembl_gene_id),'hgnc_symbol'] <- newMap$hgnc_symbol
+uniqmap[uniqmap$ensembl_gene_id=='ENSG00000254469',] <- c('ENSG00000254469','100133315','LOC100133315')
+uniqmap[uniqmap$ensembl_gene_id=='ENSG00000275464',] <- c('ENSG00000275464','102724159','LOC102724159')
+uniqmap[uniqmap$ensembl_gene_id=='ENSG00000187951',] <- c('ENSG00000187951','100288637','LOC100288637')
+uniqmap[uniqmap$ensembl_gene_id=='ENSG00000187695',] <- c('ENSG00000187695','','')
+uniqmap[uniqmap$ensembl_gene_id=='ENSG00000230626',] <- c('ENSG00000230626','','AC011005.1')
+uniqmap[uniqmap$ensembl_gene_id=='ENSG00000258472',] <- c('ENSG00000258472','','AC005726.1')
+uniqmap[uniqmap$ensembl_gene_id=='ENSG00000274322',] <- c('ENSG00000274322','','AL136531.2')
+uniqmap[uniqmap$ensembl_gene_id=='ENSG00000284024',] <- c('ENSG00000284024','','AC069544.1')
+uniqmap[uniqmap$ensembl_gene_id=='ENSG00000177359',] <- c('ENSG00000177359','','AC024940.1')
+
+# Deal with NA entrez ids
+newMap <- getBM(attributes=c('ensembl_gene_id','entrezgene_id','hgnc_symbol'),mart=newens,filters='ensembl_gene_id',values=uniqmap$ensembl_gene_id[which(is.na(uniqmap$entrezgene))]);colnames(newMap) <- c('ensembl_gene_id','entrezgene','hgnc_symbol')
+uniqmap[match(newMap$ensembl_gene_id,uniqmap$ensembl_gene_id),'entrezgene'] <- newMap$entrezgene
+uniqmap[uniqmap$ensembl_gene_id=='ENSG00000221961',] <- c('ENSG00000221961','643905','PRR21')
+uniqmap[uniqmap$ensembl_gene_id=='ENSG00000142396',] <- c('ENSG00000142396','105372481','ERVK3-1')
+uniqmap[uniqmap$ensembl_gene_id=='ENSG00000180389',] <- c('ENSG00000180389','432369','ATP5EP2')
+uniqmap[uniqmap$ensembl_gene_id=='ENSG00000180525',] <- c('ENSG00000180525','414235','PRR26')
+uniqmap[uniqmap$ensembl_gene_id=='ENSG00000181355',] <- c('ENSG00000181355','266553','OFCC1')
+uniqmap[uniqmap$ensembl_gene_id=='ENSG00000197536',] <- c('ENSG00000197536','441108','C5orf56')
+uniqmap[uniqmap$ensembl_gene_id=='ENSG00000198225',] <- c('ENSG00000198225','642489','FKBP1C')
+uniqmap[uniqmap$ensembl_gene_id=='ENSG00000229894',] <- c('ENSG00000229894','2713','GK3P')
+uniqmap[uniqmap$ensembl_gene_id=='ENSG00000232593',] <- c('ENSG00000232593','10272350','KANTR')
+
+genedf <- merge(genedf,uniqmap,by.x=0,by.y='ensembl_gene_id')
+row.names(genedf) <- genedf$ensembl_gene_id <- genedf$Row.names
+genedf <- genedf[,c('Mean_Var','Mean_Mean_Exp','Mean_Norm','ensembl_gene_id','entrezgene','hgnc_symbol')]
+```
+
+## Calculate distance matrices and cluster
+```{r dist_and_cluster}
+# First calculate distance and clustering of genes (only using MSS samples)
+dexp <- dist(expmat[,colnames(expmat)[which(colnames(expmat) %ni% msipat)]],method='euclidean');dsd <- dist(sdmat[,colnames(sdmat)[which(colnames(sdmat) %ni% msipat)]],method='euclidean')
+dd <- fuse(dexp, dsd, weights=c(0.5,0.5))
+clustord <- hclust(dd,method='complete')
+
+# Order clusters in terms of decreasing mean expression
+tmpmemb <- cutree(clustord,k=4)
+medstat <- boxplot(genedf$Mean_Mean_Exp~tmpmemb,plot=F)$stats[3,]
+ordgroup <- order(medstat,decreasing=T)
+genedf$Group <- rep('1',nrow(genedf));genedf[tmpmemb==ordgroup[2],'Group'] <- '2'
+genedf[tmpmemb==ordgroup[3],'Group'] <- '3';genedf[tmpmemb==ordgroup[4],'Group'] <- '4'
+saveRDS(genedf,file='input_files/gene_clustering_and_id_conversion.rds')
+
+# Now cluster MSS samples and add MSI samples to the end
+dsamexp <- dist(t(expmat[,colnames(expmat)[which(colnames(expmat) %ni% msipat)]]),method='euclidean')
+dsamsd <- dist(t(sdmat[,colnames(sdmat)[which(colnames(sdmat) %ni% msipat)]]),method='euclidean')
+ddsam <- fuse(dsamexp,dsamsd,weights=c(0.5,0.5))
+clustsam <- hclust(ddsam,method='complete');samord <- c(colnames(sdmat)[which(colnames(sdmat) %ni% msipat)][clustsam$order],colnames(sdmat)[which(colnames(sdmat) %in% msipat)])
+
+# Order exp and sd mats by clusters and then mean variance
+sortexpmat <- arrange(expmat,genedf$Group,desc(genedf$Mean_Var))
+sortexpmat <- sortexpmat[,samord]
+sortsdmat <- arrange(sdmat,genedf$Group,desc(genedf$Mean_Var))
+sortsdmat <- sortsdmat[,samord]
+
+```
+
+## Plot clustering results (Figure 1 A-C)
+```{r plot_clustering}
+pdf('plots/fig1a.expression.genes.pdf',width=4)
+pheatmap(explot,show_rownames = F,cluster_rows=F,cluster_cols=F,
+         gaps_col=15,fontsize_col=12,border_color=NA,fontsize=8,legend=F,
+         color=wes_palette("Zissou1", length(mybreaks)-1, type="continuous"),breaks=mybreaks,
+         cellwidth=12,cellheight=0.0285,main='Mean Expression',annotation_names_col=F,annotation_legend=F,
+         annotation_col=patdf,annotation_row=genedf[,c('Mean_Var','Mean_Mean_Exp','Mean_Norm','Group')],
+         annotation_colors=col_list)
+dev.off()
+
+pdf('plots/fig1b.standarddeviation.genes.pdf',width=4)
+pheatmap(sdplot,show_rownames = F,cluster_rows=F,cluster_cols=F,
+         gaps_col=15,fontsize_col=12,border_color=NA,fontsize=8,
+         color=wes_palette("Zissou1", length(mybreaks)-1, type="continuous"),breaks=mybreaks,
+         cellwidth=12,cellheight=0.0285,main='Standard Deviation of Expression',annotation_legend=F,
+         annotation_col=patdf,annotation_colors=col_list)
+dev.off()
+
+# Exploring Group
+pdf('plots/exploring_groups.genes.pdf',width=4,height=4)
+par(mfrow=c(1,1),font=2,font.axis=2,font.lab=2,
+    mar=c(4.5,4.5,1,1))
+boxplot(Mean_Mean_Exp~Group,data=genedf,col=scales::alpha(ngroupcol,0.5),frame=F,
+        xlab='',ylab='',boxcol=ngroupcol,boxlwd=1.5,medcol=ngroupcol,medlwd=2.5,
+        staplecol=ngroupcol,staplelwd=1.5,whiskcol=ngroupcol,whisklwd=1.5,cex.axis=1.25,
+        outpch=16,outcex=0.5,outcol=scales::alpha(ngroupcol,0.5),las=1)
+mtext(side=1,text='Group',line=3);mtext(side=2,text='Mean Mean Expression',line=3)
+mtext(side=1,at=c(1:4),text=paste0('n=',as.numeric(table(genedf$Group))),line=2)
+boxplot(Mean_Var~Group,data=genedf,col=scales::alpha(ngroupcol,0.5),frame=F,
+        xlab='',ylab='',boxcol=ngroupcol,boxlwd=1.5,medcol=ngroupcol,medlwd=2.5,
+        staplecol=ngroupcol,staplelwd=1.5,whiskcol=ngroupcol,whisklwd=1.5,cex.axis=1.25,
+        outpch=16,outcex=0.5,outcol=scales::alpha(ngroupcol,0.5),las=1)
+mtext(side=1,text='Group',line=3);mtext(side=2,text='Mean Standard Deviation',line=3)
+mtext(side=1,at=c(1:4),text=paste0('n=',as.numeric(table(genedf$Group))),line=2)
+dev.off()
+```
+
+## Make KEGG categories useable
+```{r analyse_kegg_categories}
+map <- jsonlite::fromJSON(txt='input_files/hsa00001_disease.json')$children
+catkegg <- data.frame(MainCatID='',MainCat='',CatID='',CatName='',KEGGids='',KEGGnames='',numKEGG='');catkegg <- catkegg[0,]
+keggcat <- keggcat2 <- list()
+for(i in c(1:nrow(map))) {
+  curmaincatid <- gsub('^(\\d+)\\s+.+$','\\1',map[i,1])
+  curmaincat <- gsub('^\\d+\\s+(.+)$','\\1',map[i,1])
+  
+  for(j in c(1:length(map[i,2][[1]]$children))) {
+    catid <- gsub('^(\\d+)\\s+.+$','\\1',map[i,2][[1]]$name[j])
+    catname <- gsub('^\\d+\\s+(.+)$','\\1',map[i,2][[1]]$name[j])
+    keggfull <- map[i,2][[1]]$children[[j]][,1][grep('hsa\\d+',map[i,2][[1]]$children[[j]][,1])]
+    keggids <- gsub('.+:(hsa\\d+)\\]','\\1',keggfull)
+    keggnames <- gsub('\\d+\\s+(.+)\\s+\\[\\w+:hsa\\d+\\]','\\1',keggfull)
+    catkegg[nrow(catkegg)+1,] <- c(curmaincatid,curmaincat,catid,catname,paste0(keggids,collapse=','),
+                                   paste0(keggnames,collapse=':'),length(keggids))
+    if(length(keggids)>0) {
+      keggcat[[catname]] <- keggids
+      keggcat2[[catname]] <- keggnames
+    }
+  }
+}
+catkegg$numKEGG <- as.numeric(catkegg$numKEGG)
+catkegg <- catkegg[which(catkegg$numKEGG!=0),];row.names(catkegg) <- c(1:nrow(catkegg))
+
+allkeggdf <- data.frame(gs_name=rep(names(keggcat)[1],length(keggcat[[1]])),entrez_gene=keggcat[[1]],name=keggcat2[[1]])
+for(i in c(2:length(keggcat))) {
+  allkeggdf <- rbind(allkeggdf,data.frame(gs_name=rep(names(keggcat)[i],length(keggcat[[i]])),entrez_gene=keggcat[[i]],
+                     name=keggcat2[[i]]))
+}
+```
+
+## Run KEGG meta-pathway analysis (Figure 1D)
+```{r kegg_meta_pathway}
+# Run meta-pathway analysis on each group
+keggGroup1 <- enrichKEGG(genedf$entrezgene[genedf$Group==1],organism='hsa',pvalueCutoff=0.1)
+metakg1 <- enricher(keggGroup1@result$ID[which(keggGroup1@result$p.adjust<0.1)],minGSSize=0,TERM2GENE=allkeggdf,universe=allkeggdf$entrez_gene,pvalueCutoff=0.1)
+keggGroup2 <- enrichKEGG(genedf$entrezgene[genedf$Group==2],organism='hsa',pvalueCutoff=0.1)
+metakg2 <- enricher(keggGroup2@result$ID[which(keggGroup2@result$p.adjust<0.1)],minGSSize=0,TERM2GENE=allkeggdf,universe=allkeggdf$entrez_gene,pvalueCutoff=0.1)
+keggGroup3 <- enrichKEGG(genedf$entrezgene[genedf$Group==3],organism='hsa',pvalueCutoff=0.1)
+metakg3 <- enricher(keggGroup3@result$ID[which(keggGroup3@result$p.adjust<0.1)],minGSSize=0,TERM2GENE=allkeggdf,universe=allkeggdf$entrez_gene,pvalueCutoff=0.1)
+keggGroup4 <- enrichKEGG(genedf$entrezgene[genedf$Group==4],organism='hsa',pvalueCutoff=0.1)
+metakg4 <- enricher(keggGroup4@result$ID[which(keggGroup4@result$p.adjust<0.1)],minGSSize=0,TERM2GENE=allkeggdf,universe=allkeggdf$entrez_gene,pvalueCutoff=0.1)
+
+# Get the most significant from each group (ignoring un-related categories)
+resmeta <- rbind(c('1',metakg1@result[3,"Description"],metakg1@result[3,"pvalue"],metakg1@result[3,"p.adjust"]),
+                 c('2',metakg2@result[1,"Description"],metakg2@result[1,"pvalue"],metakg2@result[1,"p.adjust"]),
+                 c('3',metakg3@result[1,"Description"],metakg3@result[1,"pvalue"],metakg3@result[1,"p.adjust"]),
+                 c('4',metakg4@result[1,"Description"],metakg4@result[1,"pvalue"],metakg4@result[1,"p.adjust"]))
+colnames(resmeta) <- c('Group','Most Sig KEGG Cat','p-value','FDR')
+
+# Plot Figure 1D
+pdf('plots/meta_enrichment_plot.pdf')
+options(scipen=-2)
+par(font=2,font.axis=2,font.lab=2,mar=c(5,4.5,1,12.5))
+xx <- barplot(rev(-log10(as.numeric(resmeta[,4]))),xlim=c(0,8),horiz=T,col=rev(ngroupcol),border=NA,axes=F,)
+text(x=rev(-log10(as.numeric(resmeta[,4])))+0.1,y=xx,labels=rev(resmeta[,2]),cex=1.5,xpd=T,adj=0)
+axis(side=1,line=0,cex.axis=2);mtext(side=1,line=3,text='-log10(FDR)',cex=2)
+mtext(side=2,at=xx,text=c(4:1),col=rev(ngroupcol),las=2,cex=2,line=0.5);mtext(side=2,line=2,text='Groups',cex=2)
+dev.off()
+```
+

@@ -1,0 +1,9 @@
+---
+title: "Fastq -> Gene Exression Counts HPC analysis"
+author: "Dr Jacob Househam"
+date: "25/06/2021"
+output: html_document
+---
+
+
+

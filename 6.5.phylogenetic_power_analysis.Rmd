@@ -1,0 +1,163 @@
+---
+title: "Perform post hoc power analysis of phylogenetic analysis"
+author: "Dr Jacob Househam"
+date: "24/06/2021"
+output: html_document
+---
+
+```{r library}
+library(ape);library(phytools);library(phangorn);library(effsize);library(pheatmap);library(wesanderson);library(phylosignal);library(grid);library(gridExtra);library(RColorBrewer);library(effsize);library(Biobase);library(stringr)
+```
+
+```{r functions}
+# Get phylogenetic signal=0 p-value given a tree, node to change expression at and mean poisson value from which to draw the new expression
+runphylo <- function(iter,changenode,x=tree,newlam=100) {
+  childs <- unlist(Descendants(x, changenode))
+  exp <- rpois(length(x$tip.label),100)
+  exp[childs] <- rpois(length(childs),newlam)
+  exp <- (exp-mean(exp))/sd(exp)
+  names(exp) <- x$tip.label
+  
+  res <- phylosig(x,exp,method='lambda',test=T)
+  
+  return(res$P)
+}
+
+# Run runphylo 1000 times, and get power (proprtion of iterations that were significant)
+getpower <- function(node,inc=100) {
+  resps <- sapply(1:1000,runphylo,changenode=node,newlam=as.numeric(inc))
+  return(length(which(resps<0.05))/length(resps))
+}
+
+```
+
+## Firstly make and plot example tree and phylogenetic analysis
+## Figure 3 A&B
+```{r example_tree}
+# Load all trees and info
+treelist <- readRDS('input_files/pgls.trees.rds')
+tinfo <- readRDS('input_files/pgls.infotrees.rds')
+
+# Select one tree to use as example
+pat <- 'C554'
+tree <- treelist[[pat]][[1]];tree$tip.label <- paste0('sample',c(length(tree$tip.label)):1)
+
+# Load in example expression, W_1 made from simulating BM on tree
+# W_0 made from zero weighting BM (so expression is random)
+exampleexp <- readRDS('input_files/exampleexp.rds')
+
+# Get the phylogenetic analysis results for both W_0 and W_1
+curexp <- exampleexp$W_0;names(curexp) <- row.names(exampleexp)
+zerores <- phylosig(tree,curexp,method='lambda',test=T)
+
+curexp <- exampleexp$W_1;names(curexp) <- row.names(exampleexp)
+oneres <- phylosig(tree,curexp,method='lambda',test=T)
+
+# Extract log-likelihood values for plotting
+dataloglik <- matrix(0L,nrow=21,ncol=2);row.names(dataloglik) <- seq(0,1,by=0.05)
+colnames(dataloglik) <- c('W_0','W_1')
+for(i in c(1:nrow(dataloglik))) {
+  dataloglik[i,'W_0'] <- zerores$lik(as.numeric(row.names(dataloglik)[i]))
+  dataloglik[i,'W_1'] <- oneres$lik(as.numeric(row.names(dataloglik)[i]))
+}
+
+# Plot Figure 3A
+pdf('figures/example_tree.pdf',width=8)
+options(scipen = -1);par(mar=c(0,0,2,6),xpd=T,font=2,font.axis=2,font.lab=2)
+plot.phylo(tree,type="phylogram",align.tip.label = T,edge.width=3,font=2,cex=1,label.offset=200)
+edgelabels(round(tree$edge.length), pos=c(rep(3,10),1,3,3,3),frame='none',font=2)
+mtext(side=4,line=0.5,text=round(rev(exampleexp$W_0),digits=2),at=c(1:8),col=colorRampPalette(brewer.pal(11,'RdYlGn')[c(7:11)])(950)[(round(rev(exampleexp$W_0+0.01),digits=2)*100)],las=1)
+mtext(side=4,line=3,text=round(rev(exampleexp$W_1),digits=2),at=c(1:8),col=colorRampPalette(brewer.pal(9,'BuPu')[c(5:9)])(950)[(round(rev(exampleexp$W_1+0.01),digits=2)*100)],las=1)
+
+# Plot Figure 3B
+par(mar=c(4,5,1,1),font=2,font.lab=2,font.axis=2,cex.axis=1.5)
+plot(as.numeric(row.names(dataloglik)),dataloglik[,1],type='o',pch=21,cex=2,lwd=1.5,
+     bg=colorRampPalette(brewer.pal(11,'RdYlGn')[c(7:11)])(950)[700],ylim=c(-26,-16),lty=2,xlab='',ylab='',axes=F,bty='n')
+points(as.numeric(row.names(dataloglik)),dataloglik[,2],lty=2,type='o',pch=21,bg=colorRampPalette(brewer.pal(9,'BuPu')[c(5:9)])(950)[700],cex=2,lwd=1.5)
+axis(side=1);axis(side=2,las=2)
+mtext(side=1,text = expression(lambda),line=2.5,cex=2.5)
+mtext(side=2,text='Log-likelihood',line=3.25,cex=1.5)
+dev.off()
+```
+
+## For each tumour simulate gene expression and calculate power to detect phylogenetic signal for the 100 trees of varying branch length
+```{r get_power}
+all_compiled_power <- list()
+# For each tumour
+for(pat in tinfo$patients) {
+  # For each tree of varying branch length
+  powlist <- list()
+  for(i in c(1:100)) {
+    # Select the tree
+    tree <- treelist[[pat]][[treenum]]
+    
+    # Prepare the results dataframe
+    powerdf <- matrix(NA,ncol=max(tree$edge),nrow=21);row.names(powerdf) <- 100+(100*(seq.int(0,100,by=5)/100))
+    colnames(powerdf) <- c(1:max(tree$edge))
+    
+    # For expression increases from 0-100
+    for(increase in row.names(powerdf)) {
+      # Get the power to detect phylogenetic signal for every node of the tree
+      powerdf[increase,] <- sapply(1:max(tree$edge),getpower,inc=as.numeric(increase))
+    }
+    powlist[[i]] <- powerdf
+  }
+  
+  # Prepare final power dataframe
+  compiled_power <- matrix(NA,ncol=max(tmptree$edge),nrow=21);row.names(compiled_power) <- 100+(100*(seq.int(0,100,by=5)/100))
+  colnames(compiled_power) <- c(1:max(tmptree$edge))
+  
+  # For each node and expression increase, get the median power over the 100 trees
+  for(j in c(1:nrow(compiled_power))) {
+    for(k in c(1:ncol(compiled_power))) {
+      compiled_power[j,k] <- median(sapply(powlist, function(x) x[j,k]))
+    }
+  }
+  
+  # Save the median power to overall list
+  all_compiled_power[[pat]] <- compiled_power
+}
+
+# Save power analysis results
+saveRDS(all_compiled_power,file='results/phylogenetic_power_median_100.rds')
+```
+
+## Plot the results of the phylogenetic power analysis
+## Figure S4 A-H
+```{r plot_power}
+# Prepare percpower dataframe
+percpower <- rep(NA,length(tinfo$patients));names(percpower) <- tinfo$patients
+nodepower <- percpower
+
+# For each tumour plot the power of every node and expression increase combination
+for(pat in tinfo$patients) {
+  tree <- treelist[[pat]][[1]]
+  
+  powerdf <- all_compiled_power[[pat]]
+  angle <- ifelse(ncol(powerdf)>=50,'90','0')
+  
+  # Work out the minimum %change needed for power >90%
+  enufrow <- suppressWarnings(min(which(rowMax(powerdf)>=0.9)))
+  if(!is.infinite(enufrow)) {
+    enufnode <- which.max(as.numeric(powerdf[enufrow,]))
+    percpower[pat] <- as.numeric(row.names(powerdf)[enufrow])-100
+    nodepower[pat] <- enufnode
+  }
+  
+  # Plot Figure S4 A-H
+  pdf(paste0('figures/power_sim_100_median.',pat,'.pdf'),width=9)
+    mybreaks <- seq(0,1,by=0.01);rowdf <- data.frame(PercIncrease=seq.int(0,100,by=5));row.names(rowdf) <- row.names(powerdf)
+  pheatmap(powerdf,show_rownames=F,show_colnames=T,main=paste0(pat,' Median Power'),cluster_rows=F,angle_col=angle,annotation_names_row=F,
+           cluster_cols=F,border_color=NA,fontsize = 10,breaks=mybreaks,annotation_row=rowdf,
+           color=wes_palette("Zissou1", length(mybreaks)-1, type = "continuous"))
+  
+  layout(matrix(c(1,2),ncol=2))
+  par(mar=c(1,1,1,1))
+  plot(tree)
+  
+  plot(tree, show.tip.label=FALSE)
+  nodelabels();tiplabels()
+  dev.off()
+}
+```
+

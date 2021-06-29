@@ -1,0 +1,103 @@
+---
+title: "Gene Expression Normalisation and Filtering"
+author: "Dr Jacob Househam"
+date: "21/06/2021"
+output: html_document
+---
+
+```{r library}
+library(data.table);library(lme4);library(MuMIn);library(DESeq2)
+```
+
+Raw gene counts were merged and filtered for genes on chromosomes 1-22, X, Y and M and
+paralogous genes (ending PAR_Y), which were never expressed, were also filtered out
+
+## Filter raw counts for protein coding genes
+```{r filter_counts}
+raw_counts <- fread('input_files/All_EPICC_counts.allgenes.txt')
+geneinfo <- fread("input_files/compiledGeneInfo.txt",header=T)
+ribo_genes <- read.table('input_files/ribosomal_genes_hsa03010.txt')[,1]
+EPICC_raw <- raw_counts[which(raw_counts$GeneID %in% geneinfo[which(geneinfo$Type=='protein_coding' & geneinfo$Chr %in% paste0('chr',c(1:22,'X','Y')) & geneinfo$Name %ni% ribo_genes),'GeneID']),];row.names(EPICC_raw) <- c(1:nrow(EPICC_raw))
+write.table(EPICC_raw,'input_files/All_EPICC_counts.txt',sep='\t',row.names = F,quote = F)
+```
+
+
+## Normalise to TPM and DESeq2's VST
+```{r normalise_expression}
+# Merge raw counts and gene info to get gene lengths
+tmpEPICC <- merge(EPICC_raw,geneinfo,by='GeneID')
+normEPICC <- tmpEPICC[,grep('C\\d+',colnames(tmpEPICC))];row.names(normEPICC) <- tmpEPICC$GeneID
+
+# Convert to TPM
+for(i in c(1:ncol(normEPICC))) { normEPICC[,i] <- normEPICC[,i]/(tmpEPICC$GeneLength/1000) }
+for(i in c(1:ncol(normEPICC))) {
+  sfactor <- sum(normEPICC[,i])/1000000
+  normEPICC[,i] <- normEPICC[,i]/sfactor
+}
+tpm <- normEPICC
+tpm$GeneID <- row.names(tpm);tpm <- tpm[,grep('C\\d+',colnames(tpm))]
+write.table(tpm,file='input_files/All_EPICC_tpm.txt')
+
+# Convert to DESeq2's VST transformed counts - setup
+passsam <- read.table('input_files/ListRNAPass.EPICC.txt',stringsAsFactors = F)[,1]
+EPICC <- EPICC_raw[,c('GeneID',passsam)]
+row.names(EPICC) <- EPICC[,1];EPICC <- EPICC[,c(2:ncol(EPICC))]
+EPICCdata <- as.data.frame(t(EPICC[c(1:2),]));colnames(EPICCdata) <- c('Patient','Type')
+EPICCdata$Patient <- gsub('(C\\d+)\\S+','\\1',row.names(EPICCdata))
+regs <- gsub('C\\d+_(\\S)\\d+_\\S+','\\1',row.names(EPICCdata))
+EPICCdata$Type <- ifelse(regs=='E','Normal','Tumour')
+EPICCdata[EPICCdata$Type=='Normal','Patient'] <- 'Normal'
+
+# Run DEseq2 (note: long runtime, suggest running on a HPC)
+dds <- DESeqDataSetFromMatrix(countData = EPICC,colData = EPICCdata,design = ~ Patient)
+dds <-DESeq(dds,modelMatrixType='expanded',betaPrior=T)
+vsd <- varianceStabilizingTransformation(dds, blind=F)
+saveRDS(vsd,file='input_files/allgenes.vsd.ensembl.rds')
+```
+
+## Filter by expression and correlation with purity
+```{r filter_for_expressed_genes}
+# Load sample data and gene expression
+dnasam <- readRDS(file='input_files/dna_sample_data.rds')
+passsam <- read.table('input_files/ListRNAPass.EPICC.txt')[,1]
+tumsam <- passsam[-grep('^C\\d+_E',passsam)]
+geneexp <- as.data.frame(assay(vsd))[,passsam]
+allexp <- rowMeans(geneexp);allsd <- rowSds(as.matrix(geneexp))
+geneexp <- apply(geneexp, 2, function(x){ (x-allexp)/allsd } )
+
+# Find which genes are >=1TPM in >=5% (n=14+) of tumour samples
+perc5 <- ceiling(length(tumsam)*.05)
+atl1 <- apply(tpm[,tumsam],1,function(x) sum(x>=10))
+filens <- tpm$GeneID[which(atl1>=perc5)]
+
+# Do regression of purity vs expression, and select genes with positive correlation
+matchsam <- dnasam[which(dnasam$MatchRNA=='Yes'),]
+geneexp <- geneexp[filens,matchsam$Sample]
+purgenres <- data.frame(Gene=row.names(geneexp),PurCoef=0,Rsq_m=0,Rsq_c=0,Chisq=0,P_chisq=0)
+for(i in c(1:nrow(purgenres))) {
+  gene <- purgenres[i,'Gene']
+  res <- suppressMessages(lmer(as.numeric(geneexp[gene,]) ~ matchsam$Purity + (1 | matchsam$Patient),REML=F))
+  res0 <- suppressMessages(lmer(as.numeric(geneexp[gene,]) ~ (1 | matchsam$Patient),REML=F))
+  purgenres[i,'PurCoef'] <- summary(res)$coefficients[2,1]
+  
+  rsq <- suppressWarnings(r.squaredGLMM(res,res0))
+  purgenres[i,'Rsq_m'] <- rsq[1,"R2m"]
+  purgenres[i,'Rsq_c'] <- rsq[1,"R2c"]
+  test <- anova(res,res0,test="Chisq")
+  purgenres[i,'Chisq'] <- test$Chisq[2]
+  purgenres[i,'P_chisq'] <- test$`Pr(>Chisq)`[2]
+  
+  if((i %% 100)==0) { print(paste0('Analysing gene ',gene,' - ',i,'/',nrow(geneexp),' (',signif(i/nrow(geneexp)*100,digits = 2),'%)')) }
+}
+purgenres$padj <- p.adjust(purgenres$P_chisq,method='fdr')
+
+pospurgen <- purgenres[-which(purgenres$PurCoef<0 & purgenres$padj<0.05),]
+filpurens <- filens[which(filens %in% pospurgen$Gene)]
+saveRDS(filpurens,file='input_files/filteredgenes.5perAL10TPM.pospur.rds')
+```
+
+
+
+
+
+

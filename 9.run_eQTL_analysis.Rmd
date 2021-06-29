@@ -1,0 +1,239 @@
+---
+title: "Run eQTL analysis"
+author: "Dr Jacob Househam"
+date: "23/06/2021"
+output: html_document
+---
+
+```{r library}
+library(data.table);library(dplyr);library(DESeq2);library(scales);library(stringr);library(MASS);library(rms)
+```
+
+```{r functions}
+lmp <- function (modelobject) {
+  if (class(modelobject) != "lm") stop("Not an object of class 'lm' ")
+  f <- summary(modelobject)$fstatistic
+  p <- pf(f[1],f[2],f[3],lower.tail=F)
+  attributes(p) <- NULL
+  return(p)
+}
+```
+
+## Load and process sample data
+```{r load_sample_data}
+rnasam <- read.table('input_files/ListRNAPass.EPICC.txt')[,1]
+dnasam <- readRDS('input_files/dna_sample_data.rds')
+
+# Filter for patients which have at least two matched tumour RNA-DNA samples
+# And add in normal samples only for those patients
+tsam <- dnasam$Sample[which(dnasam$MatchRNA=='Yes')];tpat <- dnasam$Patient[which(dnasam$MatchRNA=='Yes')]
+tmultpat <- names(which(table(tpat)>1));tsam <- tsam[which(tpat %in% tmultpat)]
+normsam <- rnasam[grep('^C\\d+_E',rnasam)];normsam <- normsam[which(gsub('(C\\d+)_\\S+','\\1',normsam) %in% unique(gsub('(C\\d+)_\\S+','\\1',tsam)))]
+matchsam <- sort(c(normsam,tsam))
+```
+
+## Load expression and convert to z-score, filtering for genes used in phylo analysis
+```{r prep_expression}
+vsd <- readRDS('input_files/allgenes.vsd.ensembl.rds')
+geneexp <- as.data.frame(assay(vsd));geneexp <- geneexp[,matchsam]
+allexp <- rowMeans(geneexp);allsd <- rowSds(as.matrix(geneexp))
+for(i in c(1:ncol(geneexp))) {
+  geneexp[,i] <- (geneexp[,i]-allexp)/allsd
+}
+filgenres <- readRDS('input_files/gene_clustering_and_id_conversion.rds')
+filgenres <- filgenres[which(filgenres$Group!='4'),]
+geneexp <- geneexp[row.names(filgenres),]
+```
+
+## Load mutation data and add columns for normal samples
+```{r prep_mutation}
+# Load mut matrix of enhancer mutations
+enhmut <- readRDS('input_files/enh_mutation_matrix.rds')
+enhmut2gene <- readRDS('input_files/enh_mutation_to_gene.rds')
+enhmut2gene$ID <- paste0(enhmut2gene$Locus,'<>',enhmut2gene$Gene)
+
+# Load mut matrix of non-synonymous mutations
+nsmut <- readRDS('input_files/ns_mutation_matrix.rds')
+nsmut2gene <- readRDS('input_files/ns_mutation_to_gene.rds')
+nsmut2gene$ID <- paste0(nsmut2gene$Locus,'<>',nsmut2gene$Gene)
+
+# Combine into a single matrix of mutations
+bothmut <- enhmut[which(row.names(enhmut) %in% row.names(nsmut)),]
+allmut2gene <- rbind(enhmut2gene,nsmut2gene);allmut2gene <- allmut2gene[which(!duplicated(allmut2gene$ID)),]
+allmut <- rbind(enhmut[which(row.names(enhmut) %ni% row.names(bothmut)),],
+                nsmut[which(row.names(nsmut) %ni% row.names(bothmut)),],
+                bothmut)
+# Add columns of 0s for normal samples
+for(norm in normsam) { tmpnam <- colnames(allmut);allmut <- cbind(allmut,rep(0,nrow(allmut)));colnames(allmut) <- c(tmpnam,norm)}
+
+# Filter for matchsam and then only loci that are mutated in at least 2 matchsam
+allmut <- allmut[,matchsam]
+allmut <- allmut[which(rowSums(allmut)>=2),]
+allmut2gene <- allmut2gene[which(allmut2gene$Locus %in% row.names(allmut)),];row.names(allmut2gene) <- c(1:nrow(allmut2gene))
+allmut2gene$Type <- ifelse(allmut2gene$ID %in% nsmut2gene$ID,ifelse(allmut2gene$ID %in% enhmut2gene$ID,'Both','NS'),'Enh')
+```
+
+## Load CNA data and add columns for normal samples
+```{r prep_cna}
+genecna <- readRDS('input_files/cnabygene_matrix.rds')
+
+# Add columns of 2s for normal samples for locicna
+for(norm in normsam) { tmpnam <- colnames(genecna);genecna <- cbind(genecna,rep(2,nrow(genecna)));colnames(genecna) <- c(tmpnam,norm)}
+```
+
+## Concatenate data ready for eQTL analysis
+```{r prep_eqtl}
+# Refine matchloci and matchgene
+matchgene <- row.names(geneexp)[which(row.names(geneexp) %in% unique(allmut2gene$Gene))]
+matchgene <- matchgene[which(matchgene %in% row.names(genecna))]
+allmut2gene <- allmut2gene[which(allmut2gene$Gene %in% matchgene),];row.names(allmut2gene) <- c(1:nrow(allmut2gene))
+matchloci <- unique(allmut2gene$Locus)
+allmut <- allmut[matchloci,]
+matchgene <- matchgene[which(matchgene %in% allmut2gene$Gene)]
+
+# Refine data frames
+expPat <- geneexp[matchgene,matchsam]
+segPat <- genecna[matchgene,matchsam]
+allPat <- allmut[matchloci,matchsam]
+
+# Convert to characters for linear regression
+for(i in c(1:ncol(allPat))) { allPat[,i] <- ifelse(allPat[,i]==0,'WT','Mut')}
+typetissue <- ifelse(gsub('C\\d+_(\\S)\\S+','\\1',colnames(allPat))=='E','Normal','Tumour')
+purity <- c();for(i in c(1:length(matchsam))) {
+  purity <- c(purity,ifelse(typetissue[i]=='Tumour',dnasam[which(dnasam$Sample==matchsam[i]),'Purity'],0))
+}
+
+# Save data matrices
+listmat <- list(expPat,allPat,segPat,purity,typetissue,allmut2gene)
+names(listmat) <- c('Expression','Mut','CNA','Purity','Tissue','Mut2Gene')
+matchloci <- row.names(listmat$Mut)
+matchpat <- unique(gsub('(C\\d+)_\\S+','\\1',matchsam))
+saveRDS(listmat,'results/eqtl_data_matrices.rds')
+
+# Load extra data needed to annotate eQTLs
+annomutmat <- readRDS('input_files/annotated_mutation_matrix.rds')
+genehancer <- readRDS('input_files/geneHancer_doubleElite_dataframe.rds')
+
+# Define the number of DNA samples and matched DNA-RNA samples per tumour
+tummatchsam <- matchsam[which(matchsam %in% colnames(annomutmat))];tumnummatchsam <- table(gsub('(C\\d+)_\\S+','\\1',tummatchsam))
+tumsam <- colnames(annomutmat)[grep('^C\\d+',colnames(annomutmat))];tumsam <- tumsam[which(gsub('(C\\d+)_\\S+','\\1',tumsam) %in% matchpat)]
+tumnumsam <- table(gsub('(C\\d+)_\\S+','\\1',tumsam))
+
+# Filter annotated mutation matrix for speed purposes
+smallanno <- annomutmat[,c('Chr','Pos','Ref','Alt','Gene','IMPACT','Consequence','CDS_position','Protein_position','Amino_acids','Locus',tumsam)]
+smallanno <- smallanno[which(rowSums(smallanno[,tumsam])>=2),];row.names(smallanno) <- c(1:nrow(smallanno));rm(annomutmat)
+```
+
+
+## Run eQTL analysis
+```{r run_eqtl}
+# Prepare results dataframe
+newallDF <- data.frame(ID=allmut2gene$ID,Locus=allmut2gene$Locus,Type=allmut2gene$Type,Ensembl=filgenres[allmut2gene$Gene,'ensembl_gene_id'],Gene=filgenres[allmut2gene$Gene,"hgnc_symbol"],Entrez=filgenres[allmut2gene$Gene,"entrezgene"],Intervals='',CDS='',AA='',ModelP=0,ModelRsq=0,Mutes=0,MutP=0,CNAes=0,CNAP=0,Purityes=0,PurityP=0,Tissuees=0,TissueP=0,NumRNASam=0,NumRNAPat=0,MutRNASam='',MutRNAPat='',ClonalityRNA='',NumAllSam=0,NumAllPat=0,MutAllSam='',MutAllPat='',ClonalityAll='')
+for(pat in matchpat) { newallDF[[pat]] <- ''};vars <- c('CNA','Mut','Purity','Tissue')
+
+# Run eQTL one mutation at a time
+for(i in c(1:nrow(newallDF))) {
+  # Select current mutation
+  curnew <- newallDF[i,];gene <- curnew$Ensembl;locus <- curnew$Locus
+  newtmpres <-smallanno[which(smallanno$Locus==locus),]
+  
+  # Prepare dataframe for linear regression
+  locusData <- data.frame(Expression=as.numeric(listmat$Expression[gene,]),Mut=listmat$Mut[locus,],CNA=listmat$CNA[gene,],Purity=listmat$Purity,Tissue=listmat$Tissue)
+  locusData$Mut <- factor(locusData$Mut,levels=c('WT','Mut'))
+  
+  # Run linear regression
+  res.lm <- lm(Expression ~., data = locusData)
+  
+  # Save p-value and r-squared of the overall regression model
+  newallDF[i,"ModelP"] <- lmp(res.lm)
+  newallDF[i,"ModelRsq"] <- summary(res.lm)$adj.r.squared
+  
+  # Save the regression coefficient and p-value for each data type
+  coefres <- coef(res.lm);psres <- summary(res.lm)$coefficients[,'Pr(>|t|)']
+  for(var in vars) {
+    newallDF[i,paste0(var,'es')] <- coefres[grep(var,names(coefres))]
+    newallDF[i,paste0(var,'P')]  <- psres[grep(var,names(psres))]
+  }
+  
+  # If the mutation is an enhancer mutation 
+  # add the interval of the enhancer it overlaps
+  if(curnew$Type %in% c('Enh','Both')) {
+    pos <- as.numeric(gsub('^chr\\S+:(\\d+)_\\S+','\\1',locus))
+    ints <- unique(unlist(str_split(genehancer[which(genehancer$GeneID==gene),'Intervals'],';')))
+    starts <- as.numeric(gsub('(\\d+)-\\d+','\\1',ints));ends <- as.numeric(gsub('\\d+-(\\d+)','\\1',ints))
+    newallDF[i,"Intervals"] <- paste(ints[which(starts<=pos & ends>=pos)],collapse=';')
+  }
+  # If mutation is a non-synonymous genic mutation
+  # add the CDS position and amino acid change
+  if(curnew$Type %in% c('NS','Both')) {
+    newallDF[i,"CDS"] <- paste0('c.',newtmpres$CDS_position,newtmpres$Ref,'>',newtmpres$Alt)
+    aminos <- str_split(newtmpres$Amino_acids,'/')[[1]]
+    newallDF[i,"AA"] <- paste0('p.',aminos[1],newtmpres$Protein_position,aminos[2])
+  }
+  
+  # Get the samples+numbers that are mutated per tumour
+  curmutsam <- names(newtmpres[tumsam])[which(newtmpres[tumsam]!=0)]
+  newallDF[i,"NumAllSam"] <- length(curmutsam);newallDF[i,"MutAllSam"] <- paste(curmutsam,collapse=';')
+  curmutpat <- unique(gsub('(C\\d+)_\\S+','\\1',curmutsam))
+  newallDF[i,"NumAllPat"] <- length(curmutpat);newallDF[i,"MutAllPat"] <- paste(curmutpat,collapse=';')
+  
+  # Get the matched DNA-RNA samples/numbers that are mutated per tumour
+  curmutmatchsam <- names(newtmpres[tummatchsam])[which(newtmpres[tummatchsam]!=0)]
+  newallDF[i,"NumRNASam"] <- length(curmutmatchsam);newallDF[i,"MutRNASam"] <- paste(curmutmatchsam,collapse=';')
+  curmutmatchpat <- unique(gsub('(C\\d+)_\\S+','\\1',curmutmatchsam))
+  newallDF[i,"NumRNAPat"] <- length(curmutmatchpat);newallDF[i,"MutRNAPat"] <- paste(curmutmatchpat,collapse=';')
+  
+  # Get the clonality of the mutation in all tumours based on all DNA data
+  tmpallclo <- c()
+  for(pat in curmutpat) {
+    patsam <- curmutsam[grep(pat,curmutsam)]
+    if(length(patsam)==tumnumsam[pat]) {
+      tmpallclo <- c(tmpallclo,'clonal')
+    } else {
+      tmpallclo <- c(tmpallclo,'subclonal')
+    }
+  }
+  if(length(unique(tmpallclo))==2) {
+    allclon <- 'mixed'
+  } else {
+    allclon <- unique(tmpallclo)
+  }
+  newallDF[i,"ClonalityAll"] <- allclon
+  
+  # Get the clonality of the mutation for each tumour (and in all tumours)
+  # for matched DNA-RNA samples
+  patrnaclo <- rep('none',length(matchpat));names(patrnaclo) <- matchpat
+  tmprnaclo <- c()
+  for(pat in curmutmatchpat) {
+    patsam <- curmutsam[grep(pat,curmutmatchsam)]
+    if(length(patsam)==tumnummatchsam[pat]) {
+      tmprnaclo <- c(tmprnaclo,'clonal')
+      patrnaclo[pat] <- 'clonal'
+    } else {
+      tmprnaclo <- c(tmprnaclo,'subclonal')
+      patrnaclo[pat] <- 'subclonal'
+    }
+  }
+  if(length(unique(tmprnaclo))==2) {
+    rnaclon <- 'mixed'
+  } else {
+    rnaclon <- unique(tmprnaclo)
+  }
+  newallDF[i,"ClonalityRNA"] <- rnaclon
+  newallDF[i,names(patrnaclo)] <- patrnaclo
+  
+  # Progress log
+  if(i %% 100==0) {
+    print(paste0('Analysing locus ',locus,' vs gene ',gene,' - ',i,'/',nrow(newallDF),' (',signif(i/nrow(newallDF)*100,digits = 2),'%)'))
+  }
+}
+# Get the adjusted p-values for the Model and the individual coefficients
+newallDF$ModeladjP <- p.adjust(newallDF$ModelP,method='fdr');newallDF$MutadjP <- p.adjust(newallDF$MutP,method='fdr')
+newallDF$CNAadjP <- p.adjust(newallDF$CNAP,method='fdr');newallDF$PurityadjP <- p.adjust(newallDF$PurityP,method='fdr')
+newallDF$TissueadjP <- p.adjust(newallDF$TissueP,method='fdr')
+
+# Save results data frame
+saveRDS(newallDF,file='results/eqtl_analysis_results.rds')
+```
+
+
