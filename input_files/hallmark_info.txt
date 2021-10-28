@@ -1,0 +1,51 @@
+Hallmark_name	Category	Class	Description	nFounderSets	nGenes
+ADIPOGENESIS	development	Other	Adipocyte development	36	200
+ALLOGRAFT_REJECTION	immune	Immune	Allograft rejection	190	200
+ANDROGEN_RESPONSE	signaling	Other	Androgen response	8	117
+ANGIOGENESIS	development	Stromal	Blood vessel formation	14	36
+APICAL_JUNCTION	cellular component	Stromal	Apical junction complex consisting of adherens and tight junctions	37	200
+APICAL_SURFACE	cellular component	Other	Membrane proteins in the apical domain	12	44
+APOPTOSIS	pathway	Other	Programmed cell death; caspase pathway	80	161
+BILE_ACID_METABOLISM	metabolic	Other	Biosynthesis of bile acids	28	112
+CHOLESTEROL_HOMEOSTASIS	metabolic	Other	Cholesterol homeostasis	28	74
+COAGULATION	immune	Other	Coagulation cascade	71	138
+COMPLEMENT	immune	Immune	Complement cascade	71	200
+DNA_REPAIR	DNA damage	Oncogenic	DNA repair	44	150
+E2F_TARGETS	proliferation	Oncogenic	E2F targets	420	200
+EPITHELIAL_MESENCHYMAL_TRANSITION	development	Stromal	Epithelial mesenchymal transition	107	200
+ESTROGEN_RESPONSE_EARLY	signaling	Other	Early estrogen response	61	200
+ESTROGEN_RESPONSE_LATE	signaling	Other	Late estrogen response	61	200
+FATTY_ACID_METABOLISM	metabolic	Other	Fatty acid metabolism	53	158
+G2M_CHECKPOINT	proliferation	Oncogenic	Cell cycle G2/M checkpoint	420	200
+GLYCOLYSIS	metabolic	Oncogenic	Glycolysis and gluconeogenesis	87	200
+HEDGEHOG_SIGNALING	signaling	Oncogenic	Hedgehog signaling	79	36
+HEME_METABOLISM	metabolic	Other	Heme metabolism	36	200
+HYPOXIA	pathway	Cellular Stress	Response to hypoxia; HIF1A targets	87	200
+IL2_STAT5_SIGNALING	signaling	Immune	IL2 STAT5 signaling	13	200
+IL6_JAK_STAT3_SIGNALING	immune	Immune	IL6 STAT3 signaling during acute phase response	24	87
+INFLAMMATORY_RESPONSE	immune	Immune	Inflammation	120	200
+INTERFERON_ALPHA_RESPONSE	immune	Immune	Interferon alpha response	82	97
+INTERFERON_GAMMA_RESPONSE	immune	Immune	Interferon gamma response	82	200
+KRAS_SIGNALING_DN	signaling	Oncogenic	KRAS signaling, down-regulated genes	16	200
+KRAS_SIGNALING_UP	signaling	Oncogenic	KRAS signaling, up-regulated genes	14	200
+MITOTIC_SPINDLE	proliferation	Oncogenic	Mitotic spindle assembly	108	200
+MTORC1_SIGNALING	signaling	Oncogenic	mTORC1 signaling	487	200
+MYC_TARGETS_V1	proliferation	Oncogenic	MYC targets variant 1	404	200
+MYC_TARGETS_V2	proliferation	Oncogenic	MYC targets variant 2	6	58
+MYOGENESIS	development	Other	Muscle differentiation	64	200
+NOTCH_SIGNALING	signaling	Oncogenic	Notch signaling	49	32
+OXIDATIVE_PHOSPHORYLATION	metabolic	Other	Oxidative phosphorylation and citric acid cycle	93	200
+P53_PATHWAY	proliferation	Oncogenic	p53 pathway	85	200
+PANCREAS_BETA_CELLS	development	Other	Genes specific to pancreatic beta cells	24	40
+PEROXISOME	cellular component	Other	Peroxisomes	28	107
+PI3K_AKT_MTOR_SIGNALING	signaling	Oncogenic	PI3K signaling via AKT to mTORC1	591	105
+PROTEIN_SECRETION	pathway	Other	Protein secretion	74	96
+REACTIVE_OXYGEN_SPECIES_PATHWAY	pathway	Cellular Stress	Reactive oxygen species (ROS) pathway	13	49
+SPERMATOGENESIS	development	Other	Sperm development and male fertility	24	135
+TGF_BETA_SIGNALING	signaling	Cellular Stress	TGF beta signaling	29	54
+TNFA_SIGNALING_VIA_NFKB	signaling	Immune	TNFA signaling via NFkB	132	200
+UNFOLDED_PROTEIN_RESPONSE	pathway	Cellular Stress	Unfolded protein response; ER stress	22	113
+UV_RESPONSE_DN	DNA damage	Cellular Stress	UV response: down-regulated genes	17	144
+UV_RESPONSE_UP	DNA damage	Cellular Stress	UV response: up-regulated genes	16	158
+WNT_BETA_CATENIN_SIGNALING	signaling	Oncogenic	Cannonical beta catenin pathway	49	42
+XENOBIOTIC_METABOLISM	metabolic	Other	Metabolism of xenobiotics	124	200

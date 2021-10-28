@@ -1,0 +1,58 @@
+---
+title: "Fastq -> BAM + Gene Exression Counts  -  HPC analysis"
+author: "Dr Jacob Househam"
+date: "25/06/2021"
+output: html_document
+---
+
+## Trim fastqs and run fastqc
+```{bash trim_and_qc}
+# Pre-trim fastqc
+fastqc {wildcards.sample}-1.fq {wildcards.sample}-2.fq  -o ./
+
+# Trim reads
+skewer -n {wildcards.sample}-1.fq {wildcards.sample}-2.fq -o ./{wildcards.sample}
+
+# Post-trim fastqc
+fastqc {wildcards.sample}-trimmed-pair1.fastq {wildcards.sample}-trimmed-pair2.fastq -o ./
+
+# Multiqc of fastqs
+multiqc -f -v --config ../configs/multiqc_config_rnaseq_libs.yaml -n ../reports/{wildcards.patient}/qc/qc_rnaseq_libraries {wildcards.patient}/rna/qc/fastqc_output
+
+```
+
+## Alignment and post alignment processing
+```{bash trim_and_qc}
+# Align with STAR
+STAR --genomeDir {input.gendir}
+        --readFilesIn {wildcards.sample}-trimmed-pair1.fastq {wildcards.sample}-trimmed-pair2.fastq
+        --outFileNamePrefix ./{wildcards.sample}-{wildcards.genome}
+        --sjdbOverhang <read_length_minus_1>
+        --runThreadN 1
+        --outSAMtype BAM SortedByCoordinate
+        --twopassMode Basic
+        --twopass1readsN -1
+        --quantMode GeneCounts
+# STAR outputs gene counts (courtesy of htseq-count)
+# These are compiled into a single matrix and samples filtered based on QC:
+  # input_files/All_EPICC_counts.allgenes.txt.gz
+
+# Add read groups
+java -jar -Xmx12G /share/apps/genomics/picard-2.20.3/bin/picard.jar AddOrReplaceReadGroups
+        I={wildcards.sample}-{wildcards.genome}Aligned.sortedByCoord.out.bam
+        O={wildcards.sample}-{wildcards.genome}.bam
+        SO=coordinate RGID={params.id} RGLB={params.id}
+        RGSM={params.sm} RGPU={params.id} RGPL=ILLUMINA
+
+# Add NM tag (as validate sam said it was missing)
+mv {wildcards.sample}-{wildcards.genome}.bam {wildcards.sample}-{wildcards.genome}.sorted.bam
+samtools calmd -b {wildcards.sample}-{wildcards.genome}.sorted.bam GRCh38_full_analysis_set_plus_decoy_hla.fa > {wildcards.sample}-{wildcards.genome}.bam
+java -jar -Xmx12G /share/apps/genomics/picard-2.20.3/bin/picard.jar BuildBamIndex I={wildcards.sample}-{wildcards.genome}.bam
+
+# Check validation of BAM
+gatk --java-options -Xmx24G ValidateSamFile -INPUT {wildcards.sample}-{wildcards.genome}.bam --MODE SUMMARY --IGNORE MATE_NOT_FOUND > {wildcards.sample}-{wildcards.genome}.log
+```
+
+
+
+

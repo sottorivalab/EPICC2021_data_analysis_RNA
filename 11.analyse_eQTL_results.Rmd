@@ -1,0 +1,270 @@
+---
+title: "Analyse eQTL results"
+author: "Dr Jacob Househam"
+date: "23/06/2021"
+output: html_document
+---
+
+```{r library, message=FALSE, warning=FALSE, include=FALSE}
+library(wesanderson);library(EnhancedVolcano);library(vioplot)
+```
+
+```{r setup}
+ngroupcol= c(wes_palette("Darjeeling2",5)[2],wes_palette('Darjeeling1',5)[2],wes_palette('FantasticFox1',5)[5]);names(ngroupcol) <- as.numeric(c(1:3))
+datacol <- wes_palette("Cavalcanti1")[c(2,5,3,4)]
+twocol <- c('gray55','gray80');patcol <- c('gray80')
+vars <- c('CNA','Mut','Purity','Tissue')
+newcol <- wes_palette("Cavalcanti1")[c(2,5,3,4)];names(newcol) <- vars
+```
+
+## Load eQTL results and input data
+```{r load_data}
+# Load eQTL results and data matrices
+listmat <- readRDS('intermediates/eqtl_data_matrices.rds')
+newallDF <- readRDS('results/eqtl_analysis_results.rds')
+matchsam <- colnames(listmat$Expression);matchpat <- gsub('(C\\d+)_\\S+','\\1',matchsam)
+for(j in c(2:length(matchsam))) { patcol <- c(patcol,ifelse(matchpat[j]==matchpat[j-1],patcol[j-1],twocol[which(twocol!=patcol[j-1])])) }
+
+# Pre-filter results by specific filters
+# All significant models
+modsigdf <- newallDF[which(newallDF$ModeladjP<0.01),];row.names(modsigdf) <- c(1:nrow(modsigdf))
+# Models significant for Mut
+mutsigdf <- modsigdf[which(modsigdf$MutadjP<0.05),];mutsigdf <- mutsigdf[order(mutsigdf$MutP),];row.names(mutsigdf) <- c(1:nrow(mutsigdf))
+mutsigdf$Direction <- ifelse(mutsigdf$Mutes>0,'Positive','Negative')
+# Models significant for Enh mut and subclonal in at least one tumour
+enhsubdf <- mutsigdf[which(mutsigdf$ClonalityRNA!='clonal' & mutsigdf$Type %in% c('Enh','Both')),];row.names(enhsubdf) <- c(1:nrow(enhsubdf))
+
+```
+
+## Plot summaries of eQTL analysis results
+### Figure 2 A&B
+```{r bar_and_violin_plots}
+# Plot barplot of number of significant models per data type
+# Figure 2A
+pdf('figures/fig2A.eqtl_sig_unique_genes.pdf',width=9)
+par(font=2,mar=c(3.6,7,2.1,1.1),xpd=F);options(scipen=-1)
+signum <- rep(0,4);names(signum) <- vars
+for(var in names(signum)) { signum[var] <- length(unique(modsigdf[which(modsigdf[,paste0(var,'adjP')]<0.05),'Ensembl'])) }
+barplot(signum,ylim=c(0,1200),col=datacol,border=NA,las=1,font=2,cex.axis=1.75,cex.names=1.75)
+mtext(side=2,text='Significant genes',line=4.5,cex=1.75,xpd=T)
+dev.off()
+
+# Plot violin plot of regression coefficients per data type
+# Figure 2B
+pdf('figures/fig2B.eqtl_regression_coefficients.pdf',width=9)
+par(font=2,font.axis=2,cex.axis=1.8,mar=c(3.1,4.5,1.6,0.6))
+tmpdf <- modsigdf[,paste0(vars,'es')];colnames(tmpdf) <- vars
+vioplot(tmpdf,col=datacol,ylim=c(-4,6),border=datacol,axes=F,las=1,h=0.2,drawRect=F)
+abline(h=0,lty=2)
+vioplot(tmpdf,col=datacol,ylim=c(-4,6),border=datacol,axes=F,las=1,h=0.2,add=T,drawRect=F)
+mtext(side=2,text='Regression coefficient (z-score)',line=2.8,cex=1.8)
+mtext(side=3,at=c(0.2,1:4),text=c('Genes',signum),line=0,cex=1.5)
+text(x=2,y=0.35,col='white',labels=paste0('n=',length(unique(mutsigdf$Locus))),cex=1.5)
+text(x=2,y=-0.25,col='white',labels=paste0('mutations'),cex=1.5)
+dev.off()
+```
+
+## Plot volcano plots for CNAs and Muts
+### Figure 2 C&D
+```{r volcano_plots}
+limxmin <- c(-1,-4,-2,-3.2);limxmax <- c(1.1,6.2,2.2,2.3);limy <- c(14,19,5,13)
+names(limxmin) <- names(limxmax) <- names(limy) <- vars
+pdf('figures/fig2CD.eqtl_volcano_plots.pdf')
+for(var in vars) {
+  newdf <- modsigdf[order(modsigdf[,paste0(var,'adjP')]),];newdf$NewName <- newdf$Gene
+  newdf[which(duplicated(newdf$NewName)),'NewName'] <- ''
+  
+  plot(EnhancedVolcano(newdf,lab=newdf$NewName,x=paste0(var,'es'),y=paste0(var,'adjP'),labSize=3,pointSize=1.25,
+                       pCutoff=0.05,FCcutoff=0,selectLab=newdf$NewName[which(newdf$NewName!='' & newdf[,paste0(var,'adjP')]<0.05)],
+                       xlim=c(limxmin[var],limxmax[var]),ylim=c(0,limy[var]),shape=16,
+                       title=var,subtitle='',caption='',xlab='Regression coefficient',col=c('dimgray','dimgray','dimgray',as.character(newcol[var])),ylab=bquote(~-Log[10] ~ italic(Padj))) + theme(legend.position = 'none'))
+}
+dev.off()
+```
+
+## Analyse and plot directionality of CNA vs expression associations
+### Figure S7
+```{r cna_pos_neg}
+cnasigdf <- modsigdf[which(modsigdf$CNAadjP<0.05),];row.names(cnasigdf) <- c(1:nrow(cnasigdf))
+cnasigdf$Direction <- ifelse(cnasigdf$CNAes>=0,'Pos','Neg')
+cnagendf <- cnasigdf[which(!duplicated(cnasigdf$Ensembl)),];row.names(cnagendf) <- c(1:nrow(cnagendf))
+
+prop1 <- prop2 <- prop3 <- prop4 <- c()
+for(i in c(1:nrow(cnagendf))) {
+  curdf <- cnagendf[i,]
+  curcna <- listmat$CNA[curdf$Ensembl,]
+  prop1 <- c(prop1,length(which(curcna<=1))/ncol(listmat$CNA))
+  prop2 <- c(prop2,length(which(curcna==2))/ncol(listmat$CNA))
+  prop3 <- c(prop3,length(which(curcna==3))/ncol(listmat$CNA))
+  prop4 <- c(prop4,length(which(curcna==4))/ncol(listmat$CNA))
+}
+
+pdf('figures/figS7.CNA_pos_vs_neg_eQTLs.pdf',width=12,height=12)
+layout(matrix(c(1:4),nrow=2,byrow=T))
+par(mar=c(4,4,4,1),cex.axis=1.35,font=2,font.axis=2,font.lab=2)
+library(vioplot);options(scipen=-1);ymax <- c(0.3,1,0.6,0.4)
+proplist <- list(Deletion=prop1,Diploid=prop2,CN3=prop3,CN4=prop4)
+descripts <- c('CN<=1','CN==2','CN==3','CN==4');names(descripts) <- names(proplist)
+for(i in c(1:length(proplist))) {
+  curprop <- proplist[[i]];propname <- names(proplist)[[i]];curdes <- descripts[propname]
+  res <- wilcox.test(curprop[which(cnagendf$Direction=='Pos')],curprop[which(cnagendf$Direction=='Neg')])
+  par(mar=c(4,5,1,1),font=2,font.axis=2,font.lab=2)
+  vioplot(curprop[which(cnagendf$Direction=='Pos')],curprop[which(cnagendf$Direction=='Neg')],las=1,border=NA,ylim=c(0,ymax[i]),
+          col=scales::alpha(c('forestgreen','firebrick3'),0.8),names=c('Pos CNA eQTL Genes','Neg CNA eQTL Genes'),frame.plot = F)
+  mtext(side=1,at=c(1,2),line=2,text=paste0('n = ',c(length(curprop[which(cnagendf$Direction=='Pos')]),length(curprop[which(cnagendf$Direction=='Neg')]))))
+  mtext(side=2,text=paste0('Proportion of samples with gene ',curdes),cex=1.25,line=3.5)
+  mtext(side=3,text=paste0(propname,' - wilcoxon p-value: ',signif(res$p.value,digits=2)),cex=1,line=-1)
+}
+dev.off()
+```
+
+## Plot the regression coefficients for NS mut and Enh mut separately
+## Figure 2E
+```{r ns_vs_enh_plot}
+# Split into NS and Enh muts (some can be both)
+nsmut <- mutsigdf[which(mutsigdf$Type %in% c('NS','Both')),]
+enhmut <- mutsigdf[which(mutsigdf$Type %in% c('Enh','Both')),]
+
+# Get the number of positive/negative eQTLs per mutation type
+matcomp <- matrix(0L,nrow=2,ncol=2);row.names(matcomp) <- c('NS','Enh')
+colnames(matcomp) <- c('Pos','Neg')
+matcomp['NS','Pos'] <- length(which(nsmut$Mutes>0))
+matcomp['NS','Neg'] <- length(which(nsmut$Mutes<0))
+matcomp['Enh','Pos'] <- length(which(enhmut$Mutes>0))
+matcomp['Enh','Neg'] <- length(which(enhmut$Mutes<0))
+
+# Plot the regression coefficients of both to illustrate difference
+pdf('figures/fig2E.violin_ns_vs_enh_effects.pdf',width=5,height=7)
+par(mar=c(4,4.5,1,1),font=2,font.axis=2,font.lab=2,cex.axis=1.5)
+vioplot(nsmut$Mutes,enhmut$Mutes,names=c('Genic','Enhancer'),drawRect=F,col=c(wes_palette("Cavalcanti1")[5],'#5CDBFF'),ylim=c(-4,6),border=c(wes_palette("Cavalcanti1")[5],'#5CDBFF'),axes=F,las=1)
+abline(h=0,lty=2)
+vioplot(nsmut$Mutes,enhmut$Mutes,drawRect=F,col=c(wes_palette("Cavalcanti1")[5],'#5CDBFF'),ylim=c(-4,6),border=c(wes_palette("Cavalcanti1")[5],'#5CDBFF'),axes=F,las=1,add=T)
+mtext(side=2,text='Regression coefficient',line=2.8,cex=1.5)
+mtext(side=1,at=c(1,2),text=paste0('n = ',c(nrow(nsmut),nrow(enhmut))),line=2.5,cex=1.5)
+dev.off()
+```
+
+## Clonality proportions but mutation centric
+### Figure 5F
+```{r clonality_vs_eqtl}
+# Number of all unique muts analysed that aren't clonal
+allmutnotclo <- length(unique(newallDF[which(newallDF$ClonalityRNA!='clonal'),'Locus']))
+sigmutnotclo <- length(unique(mutsigdf[which(mutsigdf$ClonalityRNA!='clonal'),'Locus']))
+
+allmutclo <- length(unique(newallDF[which(newallDF$ClonalityRNA=='clonal'),'Locus']))
+sigmutclo <- length(unique(mutsigdf[which(mutsigdf$ClonalityRNA=='clonal'),'Locus']))
+
+mutmat <- cbind(c(allmutclo-sigmutclo,sigmutclo),c(allmutnotclo-sigmutnotclo,sigmutnotclo))
+colnames(mutmat) <- c('Clonal','Subclonal');row.names(mutmat) <- c('non-eQTL','eQTL')
+res <- chisq.test(mutmat)
+
+# Turn into proportions for plotting
+probmat <- mutmat
+probmat[,'Clonal'] <- mutmat[,'Clonal']/sum(mutmat[,'Clonal'])*100
+probmat[,'Subclonal'] <- mutmat[,'Subclonal']/sum(mutmat[,'Subclonal'])*100
+
+# Plot Figure 5F
+pdf('figures/fig5F.clonality_chiplot.pdf',height=8,width=5)
+par(mar=c(3,4.5,3,1),font=2,font.axis=2,font.lab=2,cex.axis=2);options(scipen=1)
+xx <- barplot(probmat[2,],beside=F,ylim=c(0,4),border=NA,axes=F,horiz=F,las=1,col=c(wes_palette("Cavalcanti1")[1],wes_palette("GrandBudapest2")[4]))
+axis(side=2,cex.axis=1.75,line=0,las=2)
+mtext(side=2,text='% of mutations tested',line=2.5,cex=2)
+mtext(side=3,text=paste0('chi-squared test p=',signif(res$p.value,2)),line=0,cex=1.25)
+dev.off()
+```
+
+
+## Calculate the proportion of eQTLs that are phylo, and split by clonality
+### Figure 5G
+```{r new_eqtl_vs_phylo_vs_clonality}
+# Load recurrence of phylogenetic genes result
+phylogen <- readRDS('results/reccurent_phylogenetic_genes.rds')
+matchgene <- row.names(phylogen)
+
+# Filter only for genes that were analysed for eQTLs
+matchgene <- matchgene[which(matchgene %in% newallDF$Ensembl)]
+phylogen <- phylogen[matchgene,]
+
+# Get phylogenetic gene results by tumour
+phylolist <- readRDS('results/gene_lambda_data.rds');phylopat <- names(phylolist)
+phylores <- data.frame(GeneID=row.names(phylolist$C538),C538=0)
+for(pat in phylopat) {
+  phylores[[pat]] <- ifelse(phylolist[[pat]]$LamPval<0.05,1,0)
+}
+row.names(phylores) <- phylores$GeneID;phylores <- phylores[,phylopat]
+
+tmpalldf <- newallDF
+# For ease/speed, first filter tmpalldf for eQTL that are only in the 8 phylopat
+torm <- c()
+for(i in c(1:nrow(tmpalldf))) {
+  cureqtl <- tmpalldf[i,]
+  mutrnapats <- stringr::str_split(cureqtl$MutRNAPat,';')[[1]]
+  if(length(which(mutrnapats %in% phylopat))==0) {
+    torm <- c(torm,i)
+  }
+}
+tmpalldf <- tmpalldf[-torm,];row.names(tmpalldf) <- c(1:nrow(tmpalldf))
+
+allmatchgene <- unique(tmpalldf$Ensembl)
+allphylores <- phylores[allmatchgene,]
+
+# Now properly cycle through, record if an eQTL is in a phylo gene for a tumour that it is mutated in
+phyloall <- allclon <- cnamutsig <- c()
+for(i in c(1:nrow(tmpalldf))) {
+  cureqtl <- tmpalldf[i,]
+  mutrnapats <- stringr::str_split(cureqtl$MutRNAPat,';')[[1]]
+  curphy <- 'Non';clonality <- 'clonal'
+  for(pat in mutrnapats[which(mutrnapats %in% phylopat)]) {
+    if(allphylores[cureqtl$Ensembl,pat]==1) {
+      curphy <- 'Phylo'
+    }
+    if(cureqtl[pat]=='subclonal') {
+      clonality <- 'subclonal'
+    }
+  }
+  allclon <- c(allclon,clonality)
+  phyloall <- c(phyloall,curphy)
+  
+  sigtrack <- 'aNot'
+  if(cureqtl$ModeladjP<0.01) {
+    if(cureqtl$MutadjP<0.05) {
+      sigtrack <- 'eQTL'
+    }
+  }
+  cnamutsig <- c(cnamutsig,sigtrack)
+  
+}
+tmpalldf$Phylo <- phyloall
+tmpalldf$NewClonality <- allclon
+tmpalldf$CNAMutSig <- cnamutsig
+
+allphysig <- as.matrix(table(tmpalldf[,c('Phylo','CNAMutSig')]))
+clophysig <- as.matrix(table(tmpalldf[which(tmpalldf$NewClonality=='clonal'),c('Phylo','CNAMutSig')]))
+subphysig <- as.matrix(table(tmpalldf[which(tmpalldf$NewClonality=='subclonal'),c('Phylo','CNAMutSig')]))
+
+allphyres <- fisher.test(allphysig)
+clophyres <- fisher.test(clophysig)
+subphyres <- fisher.test(subphysig)
+ors <- c(allphyres$estimate,clophyres$estimate,subphyres$estimate)
+pvals <- c(allphyres$p.value,clophyres$p.value,subphyres$p.value)
+
+# Make matrix of eQTL proportions for phylo/non-phylo + all/subclonal/clonal - for plotting
+mat <- matrix(0L,nrow=3,ncol=2);row.names(mat) <- c('All','Clonal','Subclonal');colnames(mat) <- c('Non-Phylo','Phylo')
+mat[1,1] <- allphysig['Non','eQTL']/sum(allphysig['Non',])*100;mat[1,2] <- allphysig['Phylo','eQTL']/sum(allphysig['Phylo',])*100
+mat[2,1] <- clophysig['Non','eQTL']/sum(clophysig['Non',])*100;mat[2,2] <- clophysig['Phylo','eQTL']/sum(clophysig['Phylo',])*100
+mat[3,1] <- subphysig['Non','eQTL']/sum(subphysig['Non',])*100;mat[3,2] <- subphysig['Phylo','eQTL']/sum(subphysig['Phylo',])*100
+
+# Plot Figure 5G
+pdf('figures/fig5G.qtl_vs_phylo_chiplot.pdf',height=8)
+par(mar=c(3,4,3,1),font=2,font.axis=2,font.lab=2,cex.axis=1.5)
+xx <- barplot(t(mat),beside=T,ylim=c(0,7),border=c(wes_palette("Cavalcanti1")[c(2,2)],wes_palette("Cavalcanti1")[c(1,1)],wes_palette("GrandBudapest2")[c(4,4)]),axes=F,horiz=F,las=1,density=c(NA,20,NA,20),
+              col=c(wes_palette("Cavalcanti1")[c(2,2)],wes_palette("Cavalcanti1")[c(1,1)],wes_palette("GrandBudapest2")[c(4,4)]))
+axis(side=2,cex.axis=1.5,line=0,las=2)
+mtext(side=2,text='% of gene-mutation combinations that are eQTLs',line=2.5,cex=1.5)
+mtext(side=3,at=apply(xx,2,function(x){x[2]-(x[2]-x[1])/2 }),text=paste0('OR=',signif(ors,2)),line=1.5,cex=1.5)
+mtext(side=3,at=apply(xx,2,function(x){x[2]-(x[2]-x[1])/2 }),text=paste0('p=',signif(pvals,2)),line=0.5,cex=1.5)
+legend(x=6.5,y=6.9,xpd=T,cex=1.4,legend=colnames(mat),bty='n',fill='gray60',density=c(NA,20),border=c('gray60'))
+dev.off()
+
+```
+

@@ -1,0 +1,141 @@
+---
+title: "Combine eQTL and Phylo with selection"
+author: "Dr Jacob Househam"
+date: "23/06/2021"
+output: html_document
+---
+
+```{r library, message=FALSE, warning=FALSE, include=FALSE}
+library(dplyr);library(wesanderson);library(EnhancedVolcano);library(stringr);library(pheatmap);library(vioplot)
+```
+
+```{r setup}
+colsel <- c('#71C1A4','#F18C60')
+```
+
+## Load eQTL results and input data
+```{r load_data}
+# Load eQTL results and data matrices
+listmat <- readRDS('intermediates/eqtl_data_matrices.rds')
+newallDF <- readRDS('results/eqtl_analysis_results.rds')
+matchgene <- row.names(listmat$Expression)
+matchsam <- colnames(listmat$Expression);matchpat <- gsub('(C\\d+)_\\S+','\\1',matchsam)
+
+# Pre-filter results into by specific filters
+# All significant models
+modsigdf <- newallDF[which(newallDF$ModeladjP<0.01),];row.names(modsigdf) <- c(1:nrow(modsigdf))
+# Models significant for Mut
+mutsigdf <- modsigdf[which(modsigdf$MutadjP<0.05),];mutsigdf <- mutsigdf[order(mutsigdf$MutP),];row.names(mutsigdf) <- c(1:nrow(mutsigdf))
+
+# Load data on neutrality and selection
+selection <- as.data.frame(readxl::read_xlsx('input_files/spatial_and_selection_results.xlsx'))
+```
+
+
+## Integrate and plot selection and space vs phylo
+## Figure S20A&B
+```{r selection_and_space_vs_phylo}
+# Load actual phylogenetic genes table
+phylolist <- readRDS('results/gene_lambda_data.rds');phylopat <- names(phylolist)
+allphylores <- data.frame(GeneID=row.names(phylolist$C538),C538=0)
+for(pat in phylopat) {
+  allphylores[[pat]] <- ifelse(phylolist[[pat]]$LamPval<0.05,1,0)
+}
+row.names(allphylores) <- allphylores$GeneID;allphylores <- allphylores[,phylopat]
+allphylores <- allphylores[matchgene,]
+
+# Boxplot of selection vs phylo genes
+phyloselect <- selection[which(selection$Tumour %in% phylopat),];row.names(phyloselect) <- c(1:nrow(phyloselect))
+phyloselect$Phylo <- colSums(allphylores)
+
+selres <- wilcox.test(Phylo~Selection,data=phyloselect)
+spares <- wilcox.test(Phylo~Spatial,data=phyloselect)
+
+pdf('figures/figS20A.selection_vs_phylo.pdf')
+par(font=2,font.axis=2,font.lab=2,mar=c(4.5,5.5,2,1))
+boxplot(Phylo~Selection,data=phyloselect,las=1,frame=F,col=scales::alpha(colsel,0.5),xlab='',ylab='',ylim=c(0,2500),boxcol=colsel,boxlwd=2.5,medcol=colsel,medlwd=3.5,
+        staplecol=colsel,staplelwd=2.5,whiskcol=colsel,whisklwd=2.5,cex.axis=1.25,
+        outpch=16,outcex=0.5,outcol=scales::alpha(colsel,0.5))
+mtext(side=1,at=c(1,2),text=paste('n=',as.numeric(table(phyloselect$Selection))),line=2,cex=1.25)
+mtext(side=2,text='Number of significant phylogenetic genes',line=4,cex=1.25)
+mtext(side=3,line=0.5,text=paste0('wilcoxon p-value = ',signif(selres$p.value,3)))
+dev.off()
+
+pdf('figures/figS20B.spatial_vs_phylo.pdf')
+par(font=2,font.axis=2,font.lab=2,mar=c(4.5,5.5,2,1))
+boxplot(Phylo~Spatial,data=phyloselect,las=1,frame=F,col=scales::alpha(colsel,0.5),xlab='',ylab='',ylim=c(0,2500),boxcol=colsel,boxlwd=2.5,medcol=colsel,medlwd=3.5,
+        staplecol=colsel,staplelwd=2.5,whiskcol=colsel,whisklwd=2.5,cex.axis=1.25,
+        outpch=16,outcex=0.5,outcol=scales::alpha(colsel,0.5))
+mtext(side=1,at=c(1,2),text=paste('n=',as.numeric(table(phyloselect$Spatial))),line=2,cex=1.25)
+mtext(side=2,text='Number of significant phylogenetic genes',line=4,cex=1.25)
+mtext(side=3,line=0.5,text=paste0('wilcoxon p-value = ',signif(spares$p.value,3)))
+dev.off()
+```
+
+## Integrate and plot selection and space vs eQTL
+## Figure S20C&D
+```{r selection_and_space_vs_eqtl}
+eqtlpat <- unique(matchpat)
+eqtlselect <- selection[which(selection$Tumour %in% eqtlpat),];row.names(eqtlselect) <- c(1:nrow(eqtlselect))
+
+tots <- sigs <- props <- c()
+for(pat in eqtlpat) {
+  
+  patdfall <- newallDF[grep(pat,newallDF$MutRNAPat),]
+  patdfsig <- mutsigdf[grep(pat,mutsigdf$MutRNAPat),]
+  
+  totpat <- length(grep(pat,newallDF$MutRNAPat))
+  sigpat <- length(grep(pat,mutsigdf$MutRNAPat))
+  proppat <- sigpat/totpat
+  tots <- c(tots,totpat);sigs <- c(sigs,sigpat)
+  props <- c(props,proppat)
+}
+names(tots) <- names(sigs) <- names(props) <- eqtlpat
+
+reseqtl <- wilcox.test((as.numeric(props)*100)~eqtlselect$Selection)
+reseqtlspa <- wilcox.test((as.numeric(props)*100)~eqtlselect$Spatial)
+
+pdf('figures/figS20C.selection_vs_eqtls.pdf')
+par(font=2,font.axis=2,font.lab=2,mar=c(4.5,4,2,1))
+boxplot(as.numeric(props)*100~eqtlselect$Selection,las=1,frame=F,col=scales::alpha(colsel,0.5),xlab='',ylab='',ylim=c(0,10),boxcol=colsel,boxlwd=2.5,medcol=colsel,medlwd=3.5,
+        staplecol=colsel,staplelwd=2.5,whiskcol=colsel,whisklwd=2.5,cex.axis=1.25,
+        outpch=16,outcex=1,outcol=colsel)
+mtext(side=1,at=c(1,2),text=paste('n=',as.numeric(table(eqtlselect$Selection))),line=2,cex=1.25)
+mtext(side=2,text='% of tested eQTLs that were significant',line=2.5,cex=1.25)
+mtext(side=3,line=0.5,text=paste0('wilcoxon p-value = ',signif(reseqtl$p.value,3)))
+dev.off()
+
+# How about regression coefficients
+coeflist <- list();neutrals <- selecteds <- c()
+for(pat in eqtlpat) {
+  patdfsig <- mutsigdf[grep(pat,mutsigdf$MutRNAPat),]
+  if(eqtlselect[which(eqtlselect$Tumour==pat),'Selection']=='Selection') {
+    selecteds <- c(selecteds,patdfsig$ID)
+  } else {
+    neutrals <- c(neutrals,patdfsig$ID)
+  }
+  coeflist[[pat]] <- abs(patdfsig$Mutes)
+}
+newlist <- coeflist[which(sapply(coeflist,length)>1)]
+newlist <- newlist[order(sapply(newlist,median))]
+newselect <- eqtlselect[match(names(newlist),eqtlselect$Tumour),]
+
+neuregs <- abs(mutsigdf[which(mutsigdf$ID %in% neutrals),'Mutes'])
+selregs <- abs(mutsigdf[which(mutsigdf$ID %in% selecteds),'Mutes'])
+allregs <- list(neuregs,selregs);names(allregs) <- c('Neutral','Selected')
+sigregs <- wilcox.test(allregs$Neutral,allregs$Selected)
+
+pdf('figures/figS20D.selection_vs_regcoefs.pdf')
+par(mar=c(4.5,4.5,1,1),font=2,font.axis=2,font.lab=2,cex.axis=1.5)
+vioplot(newlist,las=2,col=ifelse(newselect$Selection=='Neutral',colsel[1],colsel[2]),border=ifelse(newselect$Selection=='Neutral',colsel[1],colsel[2]),axes=F,drawRect=F,ylim=c(0,6))
+mtext(side=2,text='Absolute regression coefficients of significant mut eQTLs',line=2.8,cex=1.3)
+legend('topleft',legend=c('Neutral','Selected'),bty='n',fill=colsel,border=colsel,cex=1.5)
+
+par(mar=c(4,4.5,1,1),font=2,font.axis=2,font.lab=2,cex.axis=1.5)
+vioplot(allregs,drawRect=F,las=1,col=colsel,border=colsel,axes=F,ylim=c(0,6))
+mtext(side=2,text='Absolute regression coefficients of significant mut eQTLs',line=2.8,cex=1.3)
+mtext(side=3,line=-1,text=paste0('wilcoxon p-value = ',signif(sigregs$p.value,3)))
+dev.off()
+
+```
+

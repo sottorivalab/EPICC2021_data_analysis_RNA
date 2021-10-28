@@ -1,0 +1,207 @@
+---
+title: "Plot CNA Profiles (Figure S9)"
+author: "Dr Jacob Househam"
+date: "16/08/2021"
+output: html_document
+---
+
+```{r library, message=FALSE, warning=FALSE, include=FALSE}
+library(data.table);options(datatable.fread.datatable=FALSE);'%ni%' <- Negate('%in%')
+```
+
+
+```{r function}
+# Function to reformat Sequenza segment calls
+classifySeq <- function(segs) {
+  segs <- segs[which(segs$chromosome %in% paste0('chr',c(1:22))),]
+  segs <- segs[which(!is.na(segs$A) & !is.na(segs$B)),]
+  segs$CNA <- 'Dip';segs[segs$CNt==3,'CNA'] <- 'Gain';segs[segs$CNt>3,'CNA'] <- 'HighGain'
+  segs[segs$CNt==1,'CNA'] <- 'Mono';segs[segs$CNt<1,'CNA'] <- 'Loss';segs[segs$A==2 & segs$B==0,'CNA'] <- 'cnLOH'
+  segs <- segs[,c("chromosome","start.pos","end.pos","CNt","CNA")]
+  return(segs)
+}
+
+# Function to reformat segments from QDNAseq pipeline
+#   - absolute copy numbers called with custom method - see preprint written methods
+classifyqdna <- function(qdna,bins) {
+  segs <- bins[,c("chromosome","start.pos","end.pos")]
+  segs$CNt <- qdna[,1] 
+  segs$CNA <- 'Dip';segs[segs$CNt==3,'CNA'] <- 'Gain';segs[segs$CNt>3,'CNA'] <- 'HighGain'
+  segs[segs$CNt==1,'CNA'] <- 'Mono';segs[segs$CNt<1,'CNA'] <- 'Loss'
+  return(segs)
+}
+```
+
+
+```{r setup}
+chroms <- paste0('chr',c(1:22))
+regcols <- c(A='#E31A1C',B='#377DB8',C='#4DAE49',D='#904A9A')
+```
+
+## Load genome (chromosome) and sample information
+```{r load_info}
+chrInfo <- read.csv("input_files/centromerePositions_hg38.csv");chrInfo <- chrInfo[c(1:22),];row.names(chrInfo) <- c(1:nrow(chrInfo))
+matTab <- data.frame(chrInfo[c("chromosome","plotStart")])
+dnasam <- readRDS('input_files/dna_sample_data.rds')
+```
+
+## Load low-pass (lp) and deep-WGS (deep) segments into separate lists
+### CNA segments can be made available upon request
+```{r load_segments}
+# Get dataframe of lpWGS samples
+lpsamdf <-data.frame(Sample=dnasam$Barcode[which(dnasam$Type=='LP')],Patient=dnasam$Patient[which(dnasam$Type=='LP')],SamID=dnasam$Sample[which(dnasam$Type=='LP')])
+                                                                                                  
+# Get bin info for reading in lpWGS
+segments <- read.table(paste0('input_files/lowpass_segments/',lpsamdf$Patient[1],'_',lpsamdf$Sample[1],'_500kb_GRCh38_multiregion_segmentation_calls.txt'))
+rowbins <- unlist(str_split(row.names(segments),':'));rowpos <- unlist(str_split(rowbins[seq.int(2,nrow(segments)*2,by=2)],'-'))
+bins <- data.frame(chromosome=paste0('chr',rowbins[seq.int(1,nrow(segments)*2,by=2)]),start.pos=as.integer(rowpos[seq.int(1,nrow(segments)*2,by=2)]),end.pos=as.integer(rowpos[seq.int(2,nrow(segments)*2,by=2)]))
+
+# Load lpWGS segments into a list and record sample details in data frame
+
+lplist <- list()
+for(i in c(1:nrow(lpsamdf))) {
+  cursam <- lpsamdf[i,]
+  
+  # Load CNA segments
+  segments <-  read.table(paste0('input_files/lowpass_segments/',cursam$Patient,'_',cursam$Sample,'_500kb_GRCh38_multiregion_segmentation_calls.txt'))
+  
+  # Reformat CNA segments ready for plotting
+  segmuts <- classifyqdna(segments,bins)
+  
+  # Save reformatted segments in list
+  lplist[[cursam$Sample]] <- segmuts
+}
+
+# Load deep WGS segments into a list and record sample details in data frame
+deepsamdf <- data.frame(Sample=dnasam$Barcode[which(dnasam$Type=='Deep')],Patient=dnasam$Patient[which(dnasam$Type=='Deep')],SamID=dnasam$Sample[which(dnasam$Type=='Deep')])
+deeplist <- list()
+for(i in c(1:nrow(deepsamdf))) {
+  cursam <- deepsamdf[i,]
+
+  # Load CNA segments
+  segments <- fread(paste0('input_files/deep_segments/',cursam$Sample,'_GRCh38_segments.txt'),data.table=F)
+  
+  # Reformat CNA segments ready for plotting
+  segmuts <- classifySeq(segments)
+  
+  # Save reformatted segments in list
+  deeplist[[cursam$Sample]] <- segmuts
+}
+
+# Get list of unique samples (so if sample is both deep and lp, only plot the deep)
+samples <- sort(unique(c(deepsamdf$SamID,lpsamdf$SamID)))
+samples <- samples[grep('^C\\d+_(A|B|C|D)\\d+',samples)]
+```
+
+## Order samples by patient and then type (already ordered by region)
+```{r reorder_samples}
+# Get unique patients
+uniquepat <- unique(gsub('(C\\d+)_\\S+','\\1',samples))
+sortsam <- c()
+
+# For each patient
+for(i in c(1:length(uniquepat))) {
+  # Get patient samples
+  cursams <- samples[which(grepl(uniquepat[i],samples))]
+  
+  # Record the patient samples that are deepWGS
+  sortsam <- c(sortsam,cursams[which(cursams %in% deepsamdf$SamID)])
+  
+  # Record the patient samples that are lpWGS (and are not also deepWGS)
+  sortsam <- c(sortsam,cursams[which(cursams %ni% deepsamdf$SamID)])
+}
+
+# Record which patient each sorted sample belongs to
+patients <- as.factor(gsub('(C\\d+).+','\\1',sortsam));patCol <- patients;levels(patCol) <- 1:length(levels(patCol));patCol <- as.numeric(patCol)
+
+# Record the region and type of each for sorted sample
+regs <- gsub('C\\d+_(\\S).+','\\1',sortsam);depth <- ifelse(sortsam %in% deepsamdf$SamID,'WGS','LP')
+```
+
+## Plot CNA segments with genome on x-axis and samples on y-axis
+### Figure S9
+```{r plot_cnas}
+pdf('figures/figS9.wgs_and_lowpass_bytype.pdf',width=15,height=20)
+
+# topy defines the highest point on plot - adjust according to number of samples/patients
+topy <- 553.4
+
+# Setup blank plot with appropriate dimensions and labels
+plot(x=c(0,3.2e9),y=c(0,topy+0.5), col='white',xaxt='n',yaxt='n',xlab='Chromosomes',ylab=paste0('Samples (n=',length(sortsam),')'),bty='n',yaxs='i',xaxs='i',main='',cex.lab=1,font.lab=2)
+
+# Vectors to track positions and gaps between patients
+ypos <- topy+1;patpos <- c();gappos <- c()
+
+# For each sample
+for(i in c(1:length(sortsam))) {
+  sample <- sortsam[i]
+  
+  # Depending on type, import segments from list
+  if(depth[i]=='WGS') {
+    segmuts <- deeplist[[paste0('EPICC_',sample,'_D1')]]
+  } else {
+    segmuts <- lplist[[paste0('EPICC_',sample,'_L1')]]
+  }
+  
+  # If not the first sample
+  if(i!=1) {
+    # If patient number is different to previous patient number
+    if(patCol[i]!=patCol[i-1]) {
+      # Input a gap into the plot to separate out patients
+      ypos <- ypos-3;gappos <- c(gappos,ypos)
+      patpos <- c(patpos,ypos-.5-length(which(gsub('(C\\d+).+','\\1',sortsam)==patients[i]))/2)
+    }
+  } else {
+    # Input gap for the first sample
+    patpos <- c(patpos,ypos-1-length(which(gsub('(C\\d+).+','\\1',sortsam)==patients[i]))/2)
+  }
+  
+  # Minus 1 from ypos to move down the plot area in order to plot the current sample
+  ypos <- ypos-1
+  
+  # Convert start and end positions to genomic coordinates
+  chrIDs <- segmuts$chromosome
+  gPositions <- matTab[['plotStart']][match(chrIDs,matTab$chromosome)]
+  startPos <- segmuts$start.pos+gPositions
+  endPos <- segmuts$end.pos+gPositions
+  
+  # Select colours to plot gains, dip and loss
+  colour = rep(NA,length=length(sortsam))
+  colour[which(segmuts$CNA=='HighGain')] = 'red4'
+  colour[which(segmuts$CNA=='Gain')] = 'red1'
+  colour[which(segmuts$CNA=='Dip')] = 'gray90'
+  colour[which(segmuts$CNA=='cnLOH')] = 'mediumpurple'
+  colour[which(segmuts$CNA=='Mono')] = 'steelblue1'
+  colour[which(segmuts$CNA=='Loss')] = 'darkblue'
+  
+  # Plot segments
+  rect(xleft=startPos, xright=endPos, ybottom=(ypos-.4), ytop=(ypos+.4),col=colour,border=NA)
+  
+  # Plot annotations of region and type to right of plot area
+  rect(xleft=2.9e9,xright=2.93e9,ybottom=(ypos-.5), ytop=(ypos+.5),col=regcols[regs[i]],border=NA)
+  rect(xleft=2.93e9,xright=2.96e9,ybottom=(ypos-.5), ytop=(ypos+.5),col=ifelse(depth[i]=='WGS','gray30','gray90'),border=NA)
+}
+
+# Add chromosome and patient labels
+axis(side=1,at=c(chrInfo$plotCentroStart),labels=gsub('chr(\\S+)','\\1',chrInfo$chromosome),cex.axis=1,las=1,font=2,line=0)
+axis(side=2,at=patpos,labels=unique(patients),cex.axis=.8,las=1,font=2,line=0)
+
+# Add extra lines for chromosome starts and ends and centromere starts and ends
+abline(v=chrInfo$plotCentroStart,lty=2,lwd=0.3);abline(v=chrInfo$plotCentroEnd,lty=2,lwd=0.3)
+abline(v=chrInfo$plotStart,lty=1,lwd=0.6);abline(v=chrInfo$plotEnd,lty=1,lwd=0.6)
+
+# Add more lines to frame the plot area
+rect(xleft=0,xright=max(chrInfo$plotEnd),ytop=topy+0.52,ybottom=topy+0.48,lwd=0.6)
+rect(xleft=0,xright=max(chrInfo$plotEnd),ytop=0.02,ybottom=-0.02,lwd=0.6)
+rect(xleft=1e7,xright=max(chrInfo$plotEnd)-1e7,ytop=gappos+2.5,ybottom=gappos-.5,col='white',border=NA)
+rect(xleft=0,xright=max(chrInfo$plotEnd),ytop=gappos+2.6,ybottom=gappos-.6,lwd=0.3)
+
+# Add legends for CNAs and annotations
+par(xpd=T,font=2)
+legend(x=3e9,y=topy,legend=c('4+','3','2','2:0','1','0'),fill=c('red4','red1','gray90','mediumpurple','steelblue2','darkblue'),border=NA,cex=1,box.lwd=0.5,title='CNA')
+legend(x=3e9,y=topy-57,legend=c('A','B','C','D'),fill=regcols,border=NA,cex=1.14,box.lwd=0.5,title='Region')
+legend(x=3e9,y=topy-107,legend=c('WGS','LP'),fill=c('gray30','gray90'),border=NA,cex=0.8,box.lwd=0.5,title='Type')
+par(xpd=F,font=1)
+dev.off()
+```
+

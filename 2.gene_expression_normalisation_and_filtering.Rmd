@@ -4,21 +4,19 @@ author: "Dr Jacob Househam"
 date: "21/06/2021"
 output: html_document
 ---
-
-```{r library}
+## Load required libraries
+```{r library, message=FALSE, warning=FALSE, include=FALSE}
 library(data.table);library(lme4);library(MuMIn);library(DESeq2)
+'%ni%' <- Negate('%in%');options(datatable.fread.datatable=FALSE)
 ```
 
-Raw gene counts were merged and filtered for genes on chromosomes 1-22, X, Y and M and
-paralogous genes (ending PAR_Y), which were never expressed, were also filtered out
-
-## Filter raw counts for protein coding genes
+## Filter raw counts for protein coding genes on canonical chromosomes that aren't ribosomal proteins
 ```{r filter_counts}
-raw_counts <- fread('input_files/All_EPICC_counts.allgenes.txt')
-geneinfo <- fread("input_files/compiledGeneInfo.txt",header=T)
+raw_counts <- fread('input_files/All_EPICC_counts.allgenes.txt.gz')
+geneinfo <- fread("input_files/compiledGeneInfo.txt.gz")
 ribo_genes <- read.table('input_files/ribosomal_genes_hsa03010.txt')[,1]
 EPICC_raw <- raw_counts[which(raw_counts$GeneID %in% geneinfo[which(geneinfo$Type=='protein_coding' & geneinfo$Chr %in% paste0('chr',c(1:22,'X','Y')) & geneinfo$Name %ni% ribo_genes),'GeneID']),];row.names(EPICC_raw) <- c(1:nrow(EPICC_raw))
-write.table(EPICC_raw,'input_files/All_EPICC_counts.txt',sep='\t',row.names = F,quote = F)
+saveRDS(EPICC_raw,'intermediates/All_EPICC_counts.rds')
 ```
 
 
@@ -35,8 +33,8 @@ for(i in c(1:ncol(normEPICC))) {
   normEPICC[,i] <- normEPICC[,i]/sfactor
 }
 tpm <- normEPICC
-tpm$GeneID <- row.names(tpm);tpm <- tpm[,grep('C\\d+',colnames(tpm))]
-write.table(tpm,file='input_files/All_EPICC_tpm.txt')
+tpm$GeneID <- row.names(tpm);tpm <- tpm[,c(ncol(tpm),grep('C\\d+',colnames(tpm)))]
+saveRDS(tpm,file='intermediates/All_EPICC_tpm.rds')
 
 # Convert to DESeq2's VST transformed counts - setup
 passsam <- read.table('input_files/ListRNAPass.EPICC.txt',stringsAsFactors = F)[,1]
@@ -52,13 +50,15 @@ EPICCdata[EPICCdata$Type=='Normal','Patient'] <- 'Normal'
 dds <- DESeqDataSetFromMatrix(countData = EPICC,colData = EPICCdata,design = ~ Patient)
 dds <-DESeq(dds,modelMatrixType='expanded',betaPrior=T)
 vsd <- varianceStabilizingTransformation(dds, blind=F)
-saveRDS(vsd,file='input_files/allgenes.vsd.ensembl.rds')
+saveRDS(dds,file='intermediates/allgenes.dds.ensembl.rds')
+saveRDS(vsd,file='intermediates/allgenes.vsd.ensembl.rds')
 ```
 
 ## Filter by expression and correlation with purity
 ```{r filter_for_expressed_genes}
-# Load sample data and gene expression
-dnasam <- readRDS(file='input_files/dna_sample_data.rds')
+# Load sample data and gene expression - purity from matched DNA/ATAC samples used for correlation
+# Purity from multi-omic samples was used with the following priority - deep WGS, low-pass WGS, ATAC-seq
+dnasam <- readRDS(file='input_files/dna_and_atac_purity.rds')
 passsam <- read.table('input_files/ListRNAPass.EPICC.txt')[,1]
 tumsam <- passsam[-grep('^C\\d+_E',passsam)]
 geneexp <- as.data.frame(assay(vsd))[,passsam]
@@ -67,8 +67,8 @@ geneexp <- apply(geneexp, 2, function(x){ (x-allexp)/allsd } )
 
 # Find which genes are >=1TPM in >=5% (n=14+) of tumour samples
 perc5 <- ceiling(length(tumsam)*.05)
-atl1 <- apply(tpm[,tumsam],1,function(x) sum(x>=10))
-filens <- tpm$GeneID[which(atl1>=perc5)]
+atl10 <- apply(tpm[,tumsam],1,function(x) sum(x>=10))
+filens <- tpm$GeneID[which(atl10>=perc5)]
 
 # Do regression of purity vs expression, and select genes with positive correlation
 matchsam <- dnasam[which(dnasam$MatchRNA=='Yes'),]
@@ -90,10 +90,11 @@ for(i in c(1:nrow(purgenres))) {
   if((i %% 100)==0) { print(paste0('Analysing gene ',gene,' - ',i,'/',nrow(geneexp),' (',signif(i/nrow(geneexp)*100,digits = 2),'%)')) }
 }
 purgenres$padj <- p.adjust(purgenres$P_chisq,method='fdr')
+saveRDS(purgenres,file='intermediates/expression_purity_regression.rds')
 
 pospurgen <- purgenres[-which(purgenres$PurCoef<0 & purgenres$padj<0.05),]
 filpurens <- filens[which(filens %in% pospurgen$Gene)]
-saveRDS(filpurens,file='input_files/filteredgenes.5perAL10TPM.pospur.rds')
+saveRDS(filpurens,file='intermediates/filteredgenes.5perAL10TPM.pospur.rds')
 ```
 
 

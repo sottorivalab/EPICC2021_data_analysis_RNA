@@ -4,12 +4,13 @@ author: "Dr Jacob Househam"
 date: "21/06/2021"
 output: html_document
 ---
-
-```{r library}
+```{r library, message=FALSE, warning=FALSE, include=FALSE}
 library(data.table);library(DESeq2);library(wesanderson);library(analogue);library(stringr)
 library(pheatmap);library(dplyr);library(biomaRt);library(cluster);library(jsonlite);library(clusterProfiler)
+'%ni%' <- Negate('%in%');options(datatable.fread.datatable=FALSE)
 ```
 
+## Define colour palettes
 ```{r setup}
 ngroupcol = c(wes_palette("Darjeeling2",5)[2],wes_palette('Darjeeling1',5)[2],wes_palette('FantasticFox1',5)[c(5,2)])
 names(ngroupcol) <- as.numeric(c(1:4))
@@ -29,8 +30,8 @@ normsam <- passsam[grep('^C\\d+_E',passsam)];allnormpats <- gsub('^(C\\d+)_\\S+'
 normsam <- normsam[which(allnormpats %in% allpats)]
 
 # Filter out genes which aren't expressed or are negatively correlated with purity
-vsd <- readRDS('input_files/allgenes.vsd.ensembl.rds')
-filpurens <- readRDS(file='input_files/filteredgenes.5perAL10TPM.pospur.rds')
+vsd <- readRDS('intermediates/allgenes.vsd.ensembl.rds')
+filpurens <- readRDS(file='intermediates/filteredgenes.5perAL10TPM.pospur.rds')
 geneexp <- as.data.frame(assay(vsd))[filpurens,tsam]
 geneexp_norm <- as.data.frame(assay(vsd))[filpurens,normsam]
 ```
@@ -60,7 +61,7 @@ ensembl <- useEnsembl(biomart='ensembl',dataset='hsapiens_gene_ensembl',version=
 geneMap <- getBM(attributes=c('ensembl_gene_id','entrezgene','hgnc_symbol'),mart=ensembl,filters='ensembl_gene_id',values=row.names(genedf))
 geneMap <- geneMap[-which(geneMap$entrezgene=='728635'),] 
 
-# Deal with duplicated ensembl ids
+# Deal with duplicated ensembl ids - manual changes derived from internet searches
 dupens <- geneMap[which(duplicated(geneMap$ensembl_gene_id)),'ensembl_gene_id']
 uniqmap <- geneMap[which(geneMap$ensembl_gene_id %ni% dupens),];row.names(uniqmap) <- c(1:nrow(uniqmap))
 newens <- useEnsembl(biomart='ensembl',dataset='hsapiens_gene_ensembl')
@@ -82,7 +83,7 @@ for(gene in unique(dupens)) {
   }
 }
 
-# Deal with missing symbol ids
+# Deal with missing symbol ids - manual changes derived from internet searches
 newMap <- getBM(attributes=c('ensembl_gene_id','entrezgene_id','hgnc_symbol'),mart=newens,filters='ensembl_gene_id',values=uniqmap$ensembl_gene_id[which(uniqmap$hgnc_symbol=='')]);colnames(newMap) <- c('ensembl_gene_id','entrezgene','hgnc_symbol')
 uniqmap[match(newMap$ensembl_gene_id,uniqmap$ensembl_gene_id),'hgnc_symbol'] <- newMap$hgnc_symbol
 uniqmap[uniqmap$ensembl_gene_id=='ENSG00000254469',] <- c('ENSG00000254469','100133315','LOC100133315')
@@ -95,7 +96,7 @@ uniqmap[uniqmap$ensembl_gene_id=='ENSG00000274322',] <- c('ENSG00000274322','','
 uniqmap[uniqmap$ensembl_gene_id=='ENSG00000284024',] <- c('ENSG00000284024','','AC069544.1')
 uniqmap[uniqmap$ensembl_gene_id=='ENSG00000177359',] <- c('ENSG00000177359','','AC024940.1')
 
-# Deal with NA entrez ids
+# Deal with NA entrez ids - manual changes derived from internet searches
 newMap <- getBM(attributes=c('ensembl_gene_id','entrezgene_id','hgnc_symbol'),mart=newens,filters='ensembl_gene_id',values=uniqmap$ensembl_gene_id[which(is.na(uniqmap$entrezgene))]);colnames(newMap) <- c('ensembl_gene_id','entrezgene','hgnc_symbol')
 uniqmap[match(newMap$ensembl_gene_id,uniqmap$ensembl_gene_id),'entrezgene'] <- newMap$entrezgene
 uniqmap[uniqmap$ensembl_gene_id=='ENSG00000221961',] <- c('ENSG00000221961','643905','PRR21')
@@ -108,6 +109,7 @@ uniqmap[uniqmap$ensembl_gene_id=='ENSG00000198225',] <- c('ENSG00000198225','642
 uniqmap[uniqmap$ensembl_gene_id=='ENSG00000229894',] <- c('ENSG00000229894','2713','GK3P')
 uniqmap[uniqmap$ensembl_gene_id=='ENSG00000232593',] <- c('ENSG00000232593','10272350','KANTR')
 
+# Merge with summarised expression data
 genedf <- merge(genedf,uniqmap,by.x=0,by.y='ensembl_gene_id')
 row.names(genedf) <- genedf$ensembl_gene_id <- genedf$Row.names
 genedf <- genedf[,c('Mean_Var','Mean_Mean_Exp','Mean_Norm','ensembl_gene_id','entrezgene','hgnc_symbol')]
@@ -126,7 +128,7 @@ medstat <- boxplot(genedf$Mean_Mean_Exp~tmpmemb,plot=F)$stats[3,]
 ordgroup <- order(medstat,decreasing=T)
 genedf$Group <- rep('1',nrow(genedf));genedf[tmpmemb==ordgroup[2],'Group'] <- '2'
 genedf[tmpmemb==ordgroup[3],'Group'] <- '3';genedf[tmpmemb==ordgroup[4],'Group'] <- '4'
-saveRDS(genedf,file='input_files/gene_clustering_and_id_conversion.rds')
+saveRDS(genedf,file='results/gene_clustering_and_id_conversion.rds')
 
 # Now cluster MSS samples and add MSI samples to the end
 dsamexp <- dist(t(expmat[,colnames(expmat)[which(colnames(expmat) %ni% msipat)]]),method='euclidean')
@@ -139,12 +141,17 @@ sortexpmat <- arrange(expmat,genedf$Group,desc(genedf$Mean_Var))
 sortexpmat <- sortexpmat[,samord]
 sortsdmat <- arrange(sdmat,genedf$Group,desc(genedf$Mean_Var))
 sortsdmat <- sortsdmat[,samord]
-
 ```
 
 ## Plot clustering results (Figure 1 A-C)
 ```{r plot_clustering}
-pdf('plots/fig1a.expression.genes.pdf',width=4)
+patdf <- data.frame(MSI_Status=ifelse(colnames(expmat) %in% msipat,'MSI','MSS'))
+row.names(patdf) <- colnames(expmat)
+explot <- scale_mat(sortexpmat,'column')
+sdplot <- scale_mat(sortsdmat,'column')
+mybreaks <- seq(floor(min(explot,sdplot)),ceiling(max(explot,sdplot)),by=0.05)
+
+pdf('figures/fig1A.expression.genes.pdf',width=4)
 pheatmap(explot,show_rownames = F,cluster_rows=F,cluster_cols=F,
          gaps_col=15,fontsize_col=12,border_color=NA,fontsize=8,legend=F,
          color=wes_palette("Zissou1", length(mybreaks)-1, type="continuous"),breaks=mybreaks,
@@ -153,7 +160,7 @@ pheatmap(explot,show_rownames = F,cluster_rows=F,cluster_cols=F,
          annotation_colors=col_list)
 dev.off()
 
-pdf('plots/fig1b.standarddeviation.genes.pdf',width=4)
+pdf('figures/fig1A.standarddeviation.genes.pdf',width=4)
 pheatmap(sdplot,show_rownames = F,cluster_rows=F,cluster_cols=F,
          gaps_col=15,fontsize_col=12,border_color=NA,fontsize=8,
          color=wes_palette("Zissou1", length(mybreaks)-1, type="continuous"),breaks=mybreaks,
@@ -162,7 +169,7 @@ pheatmap(sdplot,show_rownames = F,cluster_rows=F,cluster_cols=F,
 dev.off()
 
 # Exploring Group
-pdf('plots/exploring_groups.genes.pdf',width=4,height=4)
+pdf('figures/fig1BC.exploring_groups.genes.pdf',width=4,height=4)
 par(mfrow=c(1,1),font=2,font.axis=2,font.lab=2,
     mar=c(4.5,4.5,1,1))
 boxplot(Mean_Mean_Exp~Group,data=genedf,col=scales::alpha(ngroupcol,0.5),frame=F,
@@ -180,7 +187,7 @@ mtext(side=1,at=c(1:4),text=paste0('n=',as.numeric(table(genedf$Group))),line=2)
 dev.off()
 ```
 
-## Make KEGG categories useable
+## Extract categories for every KEGG pathway
 ```{r analyse_kegg_categories}
 map <- jsonlite::fromJSON(txt='input_files/hsa00001_disease.json')$children
 catkegg <- data.frame(MainCatID='',MainCat='',CatID='',CatName='',KEGGids='',KEGGnames='',numKEGG='');catkegg <- catkegg[0,]
@@ -233,7 +240,7 @@ resmeta <- rbind(c('1',metakg1@result[3,"Description"],metakg1@result[3,"pvalue"
 colnames(resmeta) <- c('Group','Most Sig KEGG Cat','p-value','FDR')
 
 # Plot Figure 1D
-pdf('plots/meta_enrichment_plot.pdf')
+pdf('figures/fig1D.meta_enrichment_plot.pdf')
 options(scipen=-2)
 par(font=2,font.axis=2,font.lab=2,mar=c(5,4.5,1,12.5))
 xx <- barplot(rev(-log10(as.numeric(resmeta[,4]))),xlim=c(0,8),horiz=T,col=rev(ngroupcol),border=NA,axes=F,)

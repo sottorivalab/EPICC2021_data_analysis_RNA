@@ -1,0 +1,117 @@
+---
+title: "HLA Expression Analysis - Epigenome Paper Figure 5G"
+author: "Dr Jacob Househam"
+date: "19/08/2021"
+output: html_document
+---
+
+```{r library}
+library(data.table);library(pheatmap)
+```
+
+
+```{r setup}
+'%ni%' <- Negate('%in%');chroms <- paste0('chr',c(1:22))
+regcols <- c(A='#E31A1C',B='#377DB8',C='#4DAE49',D='#904A9A')
+```
+
+# Get sample names
+```{r sample_names}
+samples <- read.table('input_files/ListRNAPass.EPICC.txt')[,1]
+allpats <- gsub('(C\\d+)_\\S+_\\S+','\\1',samples);patients <- unique(allpats)
+tsam <- samples[-grep('^C\\d+_E',samples)];nsam <- samples[grep('^C\\d+_E',samples)]
+allrnapats <- gsub('^(C\\d+)_\\S+','\\1',tsam);nsam <- nsam[which(gsub('^(C\\d+)_\\S+','\\1',nsam) %in% unique(allrnapats))]
+samples <- sort(c(tsam,nsam))
+rnapat <- unique(allrnapats)
+```
+
+## Load DEseq2 object and perfom DEG analyses of each tumour vs all normal samples
+```{r perform_DEG_analyses}
+dds <- readRDS('intermediates/allgenes.dds.ensembl.rds')
+EPICC <- readRDS('intermediates/All_EPICC_counts.rds')
+row.names(EPICC) <- EPICC[,1];EPICC <- EPICC[,samples]
+tmpexp <- counts(dds,normalized=T)
+foldchange <- data.frame(GeneID=row.names(EPICC));padj <- foldchange
+multipat <- names(table(allrnapats)[which(table(allrnapats)>=2)])
+rnapat <- multipat[grep('^C\\d+',multipat)]
+for(pat in rnapat) {
+  print(paste0('Getting DEG results for ',pat,' vs Normal'))
+  res <- results(dds,contrast=list(paste0('Patient',pat),'PatientNormal'))
+  
+  zerogen <- which(rowSums(tmpexp[,c(samples[grep(pat,samples)],nsam)])==0)
+  
+  foldchange[[pat]] <- res$log2FoldChange
+  foldchange[which(res$baseMean==0 & is.na(res$log2FoldChange)),pat] <- 0
+  foldchange[zerogen,pat] <- 0
+  padj[[pat]] <- res$padj
+  padj[which(is.na(res$padj)),pat] <- 1
+  padj[zerogen,pat] <- 1
+  if(pat==rnapat[1]) {
+    basemean <- res$baseMean
+  }
+}
+row.names(foldchange) <- row.names(padj) <- foldchange$GeneID
+foldchange <- foldchange[,rnapat];padj <- padj[,rnapat]
+
+msipat <- c('C516','C518','C536','C548','C552')
+patdf <- data.frame(msi_status=ifelse(rnapat %in% msipat,'MSI','MSS'))
+row.names(patdf) <- rnapat
+col_list <- list(msi_status=c(MSI='#01DADF',MSS='#FF9288'),
+                 mean_norm=colorRampPalette(c('white','#DB4700'))(25))
+
+uprna <- c();downrna <- c()
+for(i in c(1:nrow(foldchange))) {
+  curtf <- row.names(foldchange)[i]
+  
+  uprna <- c(uprna,length(which(foldchange[curtf,rnapat]>2 & padj[curtf,rnapat]<0.05)))
+  downrna <- c(downrna,length(which(foldchange[curtf,rnapat]<(2*-1) & padj[curtf,rnapat]<0.05)))
+}
+tfdf <- data.frame(mean_norm=log(basemean+1),rna_down=downrna,rna_up=uprna)
+row.names(tfdf) <- row.names(foldchange)
+
+pstars <- padj
+for(j in c(1:ncol(padj))) {
+  pstars[,j] <- getstars_vec(padj[,j])
+}
+
+savelist <- list()
+savelist[['foldchange']] <- foldchange
+savelist[['padj']] <- padj
+savelist[['tfdf']] <- tfdf
+savelist[['pstars']] <- pstars
+savelist[['patdf']] <- patdf
+savelist[['col_list']] <- col_list
+
+saveRDS(savelist,'intermediates/datalist_vs_normal_allgenes.rds')
+```
+
+## Plot differential expression for HLA genes (Figure 5G) and Interferon genes
+```{r load_segments}
+ifnens <- ifnens[which(ifnens %in% row.names(foldchange))]
+hlaens <- hlaens[which(hlaens %in% row.names(foldchange))]
+
+tmpfold <- foldchange[hlaens,];tmpstar <- pstars[hlaens,]
+row.names(tmpfold) <- row.names(tmpstar) <- geneinfo[match(hlaens,geneinfo$GeneID),'Symbol']
+
+mybreaks <- seq.int(-15,15,by=1)
+pdf('figures/epigenomefig5G.hla_expression_deseq2.pdf',height=8,width=12)
+pheatmap(tmpfold,fontsize_row=12,fontsize_col=12,border_color=NA,
+         display_numbers=tmpstar,fontsize_number = 12,
+         color=colorRampPalette(colheat)(length(mybreaks)-1),
+         annotation_col=patdf,breaks=mybreaks,
+         annotation_colors=col_list)
+dev.off()
+
+tmpfold <- foldchange[ifnens,];tmpstar <- pstars[ifnens,]
+row.names(tmpfold) <- row.names(tmpstar) <- geneinfo[match(ifnens,geneinfo$GeneID),'Symbol']
+
+mybreaks <- seq.int(-10,10,by=1)
+pdf('figures/epigenome.interferon_expression_deseq2.pdf',height=8,width=12)
+pheatmap(tmpfold,fontsize_row=12,fontsize_col=12,border_color=NA,
+         display_numbers=tmpstar,fontsize_number=8,
+         color=colorRampPalette(colheat)(length(mybreaks)-1),
+         annotation_col=patdf,breaks = mybreaks,
+         annotation_colors=col_list)
+dev.off()
+```
+

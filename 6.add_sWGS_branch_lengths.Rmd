@@ -1,0 +1,97 @@
+---
+title: "Adding Branch Length to sWGS samples"
+author: "Dr Jacob Househam"
+date: "21/06/2021"
+output: html_document
+---
+
+```{r library, message=FALSE, warning=FALSE, include=FALSE}
+library(geiger);library(stringr)
+tumreg <- c('A','B','C','D')
+```
+
+## Load sample data
+```{r sample_data_load}
+rnasam <- read.table('input_files/ListRNAPass.EPICC.txt')[,1]
+rnasam <- rnasam[-grep('^C\\d+_E',rnasam)]
+rnapats <- unique(gsub('(C\\d+)_\\S+','\\1',rnasam))
+dnasam <- readRDS(file='input_files/dna_sample_data.rds')
+```
+
+## Add branch lengths for sWGS/lpWGS samples in multi-region (n>=6 samples) tumours 
+```{r add_branch_lengths}
+treelist <- list()
+finalset <- readRDS('input_files/final_tree_set.rds')
+for(pat in unique(dnasam$Patient)) {
+  print(pat)
+  mptree <- finalset[[pat]]
+  patsam <- dnasam[which(dnasam$Patient==pat),];row.names(patsam) <- c(1:nrow(patsam))
+  newsam <- patsam$Sample[which(patsam$MatchRNA=='Yes')]
+  
+  if(length(newsam)>=6) {
+    # Remove samples that aren't in DNA sample list
+    todelete <- c()
+    for(samtree in mptree$tip.label) {
+      justnam <- str_split(samtree,' ')[[1]][1]
+      if(length(grep(justnam,patsam$Barcode))==0) {
+        todelete <- c(todelete,samtree)
+      }
+    }
+    mptree <- drop.tip(mptree, todelete)
+    treesam <- gsub('EPICC_(C\\d+_\\S+)_(D|L).+','\\1',mptree$tip.label)
+ 
+    epiccsam <- mptree$tip.label
+    nodedf <- data.frame(LeafName=epiccsam,
+                         EPICCName=gsub('EPICC_(C\\d+_\\S+_\\S+)_.+','\\1',epiccsam),
+                         Type=ifelse(gsub('EPICC_C\\d+_\\S+_\\S+_(\\S).+','\\1',epiccsam)=='D','WGS','LP'),
+                         NodeNum=which(mptree$tip.label %in% epiccsam),
+                         EdgeNum=c(1:nrow(mptree$edge))[mptree$edge[,2] %in% which(mptree$tip.label %in% epiccsam)],
+                         BranchLen=mptree$edge.length[mptree$edge[,2] %in% which(mptree$tip.label %in% epiccsam)])
+    nodedf$Region <- gsub('^C\\d+_(\\S)\\S+','\\1',nodedf$EPICCName)
+    nodedf <- nodedf[which(nodedf$Region %in% tumreg[which(tumreg %in% unique(nodedf$Region[which(nodedf$Type=='LP')]))]),];row.names(nodedf) <- c(1:nrow(nodedf))
+    wgsdf <- nodedf[which(nodedf$Type=='WGS'),];row.names(wgsdf) <- c(1:nrow(wgsdf))
+    lpdf <- nodedf[which(nodedf$Type=='LP'),];row.names(lpdf) <- c(1:nrow(lpdf))
+    wgs_lens <- wgsdf$BranchLen
+    
+    lentrees <- list()
+    for(i in c(1:100)) {
+      newtree <- mptree
+      
+      for(l in c(1:nrow(lpdf))) {
+        curlp <- lpdf[l,]
+      }
+      
+      newlens <- rpois(nrow(lpdf),lambda=mean(wgs_lens))
+      newtree$edge.length[lpdf$EdgeNum] <- newlens
+      newtree$tip.label <- gsub('C\\d+_(\\S+)','\\1',treesam)
+      
+      newexp <- matrix(0L,nrow=length(newsam),ncol=3);row.names(newexp) <- gsub('C\\d+_(\\S+)','\\1',newsam)
+      obj <- name.check(newtree,newexp)
+      trimtree <- drop.tip(newtree, obj$tree_not_data)
+      name.check(trimtree,newexp)
+      
+      lentrees[[as.character(i)]] <- trimtree
+    }
+    treelist[[pat]] <- lentrees
+  }
+}
+saveRDS(treelist,file='intermediates/pgls.trees.rds')
+```
+
+
+## Output a dataframe of sample/tree info
+```{r sample_tree_info}
+treepats <- names(treelist)
+alltreesam <- c();for(pat in treepats) { alltreesam <- c(alltreesam,paste0(pat,'_',treelist[[pat]][['1']]$tip.label))}
+allpats <- gsub('^(C\\d+)_\\S+','\\1',alltreesam);numpat <- as.numeric(table(allpats))
+names(numpat) <- treepats
+sampur <- dnasam[match(alltreesam,dnasam$Sample),"Purity"];names(sampur) <- alltreesam
+
+tinfo <- list(samples=alltreesam,
+              purity=sampur,
+              allpats=allpats,
+              patients=treepats,
+              numsam=numpat)
+saveRDS(tinfo,file='intermediates/pgls.infotrees.rds')
+```
+
