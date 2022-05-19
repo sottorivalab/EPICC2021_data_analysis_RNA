@@ -1,0 +1,214 @@
+---
+title: "Hierarchical clustering of gene (n=8368) expression clustering for tumours with >=5 samples (n=17)"
+author: "Dr Jacob Househam"
+date: "18/05/2022"
+output: html_document
+---
+
+```{r library, message=FALSE, warning=FALSE, include=FALSE}
+library(DESeq2);library(phangorn);library(wesanderson);library(pheatmap)
+library(data.table);library(phylogram);library(dendextend);library(usedist)
+options(datatable.fread.datatable=FALSE)
+regcol <- c(A='#E31A1C',B='#377DB8',C='#4DAE49',D='#904A9A',Root='#808080');rcol <- regcol[c(1:4)]
+```
+
+```{r functions}
+getsumdists <- function(dm,sams) {
+  regs <- gsub('^C\\d+_(\\S)\\d+_\\S+','\\1',sams)
+  dists <- c();for(i in c(1:length(sams))) { for(j in c(1:length(sams))) { if(i<j) {if(regs[i]==regs[j]) { dists <- c(dists,dm[i,j]) } } }}
+  return(sum(dists))
+}
+```
+
+## Load expression data and info
+```{r load_expression_and_info}
+# 2) Load DESeq2 normalised gene expression
+vsd <- readRDS('intermediates/allgenes.vsd.ensembl.rds')
+vsd@colData$Region <- gsub('^C\\d+_(\\S)\\S+','\\1',row.names(vsd@colData))
+geneexp <- as.data.frame(assay(vsd))
+
+# 3) Input expression filtering from other script
+genedf <- readRDS('results/gene_clustering_and_id_conversion.rds')
+genedf <- genedf[which(genedf$Group!=4),]
+
+# 4) Load sample data
+samples <- read.table('input_files/ListRNAPass.EPICC.txt')[,1]
+tsam <- samples[which(gsub('^C\\d+_(\\S)\\d_\\S+$','\\1',samples)!='E')]
+patients <- c('C518','C524','C531','C532','C537','C538','C542','C543','C544','C549','C550','C551','C552','C554','C559','C560','C561')
+```
+
+## Generate and plot expression clustered dendrograms, plus matching heatmaps
+### Plots used in Figures S12 and S14
+### To complete Figure S12, take trees from Fig 3 & Figure S28
+```{r plot_dna_get_stats}
+expdists <- expdends <- list()
+pdf('figures/figS12&14.gene_expression_dendrograms.pdf',height=5.556)
+par(mar=c(4,4,2,2),font=2,font.axis=2,font.lab=2)
+for(pat in patients) {
+  vsd_pat <- vsd[which(names(vsd@rowRanges) %in% row.names(genedf)),tsam[grep(pat,tsam)]]
+  annodf <- data.frame(Region=vsd_pat@colData$Region);row.names(annodf) <- row.names(vsd_pat@colData)
+  distpat <- dist(t(assay(vsd_pat)),method = 'euclidean');hcpat <- hclust(distpat,method='complete')
+  expdists[[pat]] <- distpat
+  
+  patdend <- as.dendrogram(hcpat)
+  for(reg in names(rcol)) { patdend <- set(patdend,"by_labels_branches_col", value = row.names(annodf)[which(annodf$Region==reg)], type = "all",TF_value=rcol[reg]) }
+  patdend <- set(patdend,"labels_color", value = rcol[annodf$Region],order_value=T)
+  patdend <- set(patdend,"branches_lwd", 2)
+  labels(patdend) <- gsub('^C\\d+_(\\S+)$','\\1',labels(patdend))
+  expdends[[pat]] <- patdend
+  # Plotted 'backwards' for Figure S12
+  par(mar=c(4,4,2,2),font=2,font.axis=2,font.lab=2)
+  plot_horiz.dendrogram(patdend,side = T, main=pat)
+  # Plotted right-facing for Figure S14
+  par(mar=c(4,2,2,4),font=2,font.axis=2,font.lab=2)
+  plot(patdend,horiz = TRUE,main=pat)
+  
+  # Plot heatmaps to go in Figure S14
+  explot <- t(assay(vsd_pat));row.names(explot) <- gsub('^C\\d+_(\\S+_\\S+)$','\\1',labels(patdend))
+  sdexp <- apply(explot,2,sd)
+  explot <- explot[,which(sdexp!=0)]
+  explot <- scale_mat(explot,'column')
+  
+  mybreaks <- seq(floor(min(explot)),ceiling(max(explot)),by=0.05)
+  mat <- pheatmap(explot[rev(labels(patdend)),],show_rownames = T,show_colnames=F,cluster_rows=F,cluster_cols=T,treeheight_col=0,
+                  border_color=NA,fontsize = 10,legend = F,scale='none',
+                  color=wes_palette("Zissou1", length(mybreaks)-1, type = "continuous"),breaks=mybreaks)
+  
+}
+dev.off()
+saveRDS(list(dists=expdists,dends=expdends),file='intermediates/exp_dists_and_dends.rds')
+```
+
+## Run permutation test for clustering association with region and plot result
+### Figure S15
+```{r run_and_plot_permutation}
+explist <- readRDS('intermediates/exp_dists_and_dends.rds')
+
+# Reduce to only tumours with at least 10 samples (n=11) - can't get proper distributions with fewer samples
+numsams <- c()
+for(p in c(1:length(patients))) {
+  pat <- patients[p]
+  distmat <- as.matrix(explist$dists[[pat]])
+  samples <- colnames(distmat);numsams <- c(numsams,length(samples))
+}
+patients <- patients[which(numsams>10)]
+
+# Run permutation test
+resdist <- data.frame(Res=rep(0,length(patients)),Max=0,Prop=0,Sig=0);row.names(resdist) <- patients
+permlist <- list()
+for(p in c(1:length(patients))) {
+  pat <- patients[p]
+  distmat <- as.matrix(cophenetic(explist$dends[[pat]]));colnames(distmat) <- row.names(distmat) <- paste0(pat,'_', row.names(distmat))
+  samples <- colnames(distmat)
+  sumdist <- getsumdists(distmat,samples)
+  resdist[pat,'Res'] <- sumdist
+  
+  permdists <- c()
+  for(i in c(1:10000)) {
+    tmpmat <- distmat
+    colnames(tmpmat) <- row.names(tmpmat) <- sample(samples)
+    permdists <- c(permdists,getsumdists(tmpmat,colnames(tmpmat)))
+  }
+  permlist[[pat]] <- permdists
+  
+  resdist[pat,'Max'] <- max(permdists);resdist[pat,'Prop'] <- sumdist/max(permdists)
+  resdist[pat,'Sig'] <- (length(which(permdists<=resdist[pat,'Res']))+1)/(10000+1)
+  
+}
+resdist$Adj <- p.adjust(resdist$Sig,method='fdr')
+
+# Plot permutation test
+pdf(paste0('figures/figS15.mixing_permutations_expression.cophenetic.pdf'),width=6,height=8)
+layout(matrix(c(1:12),nrow=4,ncol=3,byrow=T))
+for(p in c(1:length(patients))) {
+  pat <- patients[p];permdists <- permlist[[pat]]
+  
+  if(resdist[pat,'Res']<min(permdists)) {
+    hist(permdists,breaks=30,xlim=c(resdist[pat,'Res'],max(permdists)),col='skyblue3',border=NA,
+         main=pat,xlab=paste0('p=',formatC(resdist[pat,'Adj'])))
+  } else {
+    hist(permdists,breaks=30,col='skyblue3',border=NA,main=pat,xlab=paste0('p=',formatC(resdist[pat,'Adj'])))
+  }
+  abline(v=resdist[pat,'Res'],lty=2,lwd=2,col='firebrick3')
+}
+dev.off()
+saveRDS(resdist,file='results/expression_clustering_mixing_results.rds')
+```
+
+## Generate expression distances with CIBERSORTx distances
+```{r generate_distances}
+ciber <- read.delim("input_files/CIBERSORTx_EPICC.txt");ciber <- ciber[ciber$Mixture %in% tsam,]
+row.names(ciber) <- ciber$Mixture
+celltypes <- colnames(ciber[,c(2:23)])
+ciber$Patient <- as.factor(gsub("^(C\\d+)_\\S+_\\S+","\\1",ciber$Mixture))
+
+# Generate immune Euclidean distance matrices
+immdists <- list()
+for(pat in patients) {
+  ciberpat <- ciber[tsam[grep(pat,tsam)],celltypes]
+  
+  distpat <- dist(ciberpat,method = 'euclidean')
+  immdists[[pat]] <- distpat
+}
+
+# Get all pairwise distances for expression and immune
+disexp_dists <- data.frame(matrix(ncol=7,nrow=0));colnames(disexp_dists) <- c('s1','s2','patient','pair','pair_type','exp_d','ciber_d')
+for(pat in patients) {
+  curpat <- tsam[grep(pat,tsam)]
+  for(s1 in c(1:length(curpat))) {
+    sam1 <- curpat[s1]
+    for(s2 in c(1:length(curpat))) {
+      if(s1<s2) {
+        sam2 <- curpat[s2]
+        curexpd <- as.numeric(dist_subset(expdists[[pat]], c(sam1,sam2)))
+        reg1 <- gsub('C\\d+_(\\S)\\S+','\\1',sam1);reg2 <- paste0(gsub('C\\d+_(\\S)\\S+','\\1',sam2))
+        type <- ifelse(reg1==reg2,'within-regions','between-regions')
+        
+        curcib <- as.numeric(dist_subset(immdists[[pat]], c(sam1,sam2)))
+        
+        disexp_dists[nrow(disexp_dists)+1,] <- c(sam1,sam2,pat,paste0(reg1,'-',reg2),type,curexpd,curcib)
+      }
+    }
+  }
+}
+disexp_dists$exp_d <- as.numeric(disexp_dists$exp_d)
+disexp_dists$ciber_d <- as.numeric(disexp_dists$ciber_d)
+```
+
+## Plot comparison of expression and immune based distances
+### Figure S16 (A-C)
+```{r plot_compare_distances}
+datacol <- brewer.pal(3,'Accent')[c(1:2)]
+res <- lm(disexp_dists$ciber_d~disexp_dists$exp_d);sumres <- summary(res)
+
+pdf('figures/figS16A.CIBER_vs_Expression_Distance.pdf')
+par(las=1,cex.axis=1.5,cex.lab=1.5,font=2,font.lab=2,font.axis=2,mar=c(4.5,5,2.5,1))
+plot(disexp_dists$exp_d,disexp_dists$ciber_d,pch=16,
+     col=scales::alpha(ifelse(disexp_dists$pair_type=='within-regions',datacol[1],datacol[2]),0.6),xlim=c(0,500),ylim=c(0,30),bty='n',xlab='Expressed Genes',ylab='CIBERSORT Absolute Score')
+abline(a=as.numeric(res$coefficients[1]),b=as.numeric(res$coefficients[2]),lty=2,lwd=3);mtext(side=3,text='Intra-tumour euclidean distances',cex=1.5)
+legend('topright',bty='n',
+       legend=c(paste0('p=',formatC(sumres$coefficients[2,4], format = "e", digits = 2)),paste0('R^2=',signif(sumres$r.squared,3))))
+legend('topleft',bty='n',col=datacol,pch=16,
+       legend=c('within-regions','between-regions'),cex=1.35)
+dev.off()
+
+disexp_dists$pair_type <- factor(disexp_dists$pair_type,levels=c('within-regions','between-regions'))
+pdf('figures/figS16BC.CIBER_and_Expression_violins.pdf',width=5.5,height=5.5)
+res <- wilcox.test(exp_d~pair_type,data=disexp_dists)
+datacol <- brewer.pal(3,'Accent')[c(1:2)]
+par(mar=c(5,5,2,1),font.axis=2,font=2,font.lab=2,cex.lab=1.5,cex.axis=1.2)
+vioplot(exp_d~pair_type,data=disexp_dists,col=datacol,xlab='Comparison type',ylab='Expressed Genes Euclidean Distance',
+        ylim=c(0,600),border=datacol,axes=F,las=1,drawRect=T)
+grid(lty=1)
+vioplot(exp_d~pair_type,data=disexp_dists,col=datacol,ylim=c(0,1),border=datacol,axes=F,las=1,drawRect=T,add=T)
+mtext(side=3,text=paste0('wilcoxon p-value: ',formatC(res$p.value, format = "e", digits = 2)),cex=1.2)
+
+res <- wilcox.test(ciber_d~pair_type,data=disexp_dists)
+vioplot(ciber_d~pair_type,data=disexp_dists,col=datacol,xlab='Comparison type',ylab='CIBERSORTx Euclidean Distance',
+        ylim=c(0,30),border=datacol,axes=F,las=1,drawRect=T)
+grid(lty=1)
+vioplot(ciber_d~pair_type,data=disexp_dists,col=datacol,ylim=c(0,1),border=datacol,axes=F,las=1,drawRect=T,add=T)
+mtext(side=3,text=paste0('wilcoxon p-value: ',formatC(res$p.value, format = "e", digits = 2)),cex=1.2)
+dev.off()
+```
+

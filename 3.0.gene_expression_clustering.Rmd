@@ -33,6 +33,10 @@ normsam <- normsam[which(allnormpats %in% allpats)]
 vsd <- readRDS('intermediates/allgenes.vsd.ensembl.rds')
 filpurens <- readRDS(file='intermediates/filteredgenes.5perAL10TPM.pospur.rds')
 geneexp <- as.data.frame(assay(vsd))[filpurens,tsam]
+allexp <- rowMeans(geneexp);allsd <- rowSds(as.matrix(geneexp))
+#for(i in c(1:ncol(geneexp))) {
+#  geneexp[,i] <- (geneexp[,i]-allexp)/allsd
+#}
 geneexp_norm <- as.data.frame(assay(vsd))[filpurens,normsam]
 ```
 
@@ -46,9 +50,10 @@ sdmat <- expmat
 for(pat in patients) {
   patsam <- tsam[grep(pat,tsam)];patexp <- geneexp[,patsam]
   expmat[[pat]] <- rowMeans(as.matrix(patexp))-min(geneexp)
-  sdmat[[pat]] <- apply(patexp,1,function(x) sd(x))
+  sdmat[[pat]] <- apply(patexp,1,function(x) sd(x))#/(rowMeans(as.matrix(patexp))-min(geneexp))
 }
 normexp <- rowMeans(as.matrix(geneexp_norm))-min(geneexp_norm)
+normsd <- apply(geneexp_norm,1,function(x) sd(x))
 
 genedf <- data.frame(Mean_Var=rowMeans(as.matrix(sdmat)),Mean_Mean_Exp=rowMeans(as.matrix(log(expmat+1))),
                      Mean_Norm=log(normexp+1))
@@ -184,6 +189,12 @@ boxplot(Mean_Var~Group,data=genedf,col=scales::alpha(ngroupcol,0.5),frame=F,
         outpch=16,outcex=0.5,outcol=scales::alpha(ngroupcol,0.5),las=1)
 mtext(side=1,text='Group',line=3);mtext(side=2,text='Mean Standard Deviation',line=3)
 mtext(side=1,at=c(1:4),text=paste0('n=',as.numeric(table(genedf$Group))),line=2)
+#boxplot(Mean_Var/Mean_Mean_Exp~Group,data=genedf,col=scales::alpha(ngroupcol,0.5),frame=F,
+#        xlab='',ylab='',boxcol=ngroupcol,boxlwd=1.5,medcol=ngroupcol,medlwd=2.5,
+#        staplecol=ngroupcol,staplelwd=1.5,whiskcol=ngroupcol,whisklwd=1.5,cex.axis=1.25,
+#        outpch=16,outcex=0.5,outcol=scales::alpha(ngroupcol,0.5),las=1)
+#mtext(side=1,text='Group',line=3);mtext(side=2,text='Mean SD / Mean Mean Exp',line=3)
+#mtext(side=1,at=c(1:4),text=paste0('n=',as.numeric(table(genedf$Group))),line=2)
 dev.off()
 ```
 

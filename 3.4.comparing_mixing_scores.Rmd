@@ -1,0 +1,353 @@
+---
+title: "Get intermixing score for RNA dendrograms and compare to score from DNA phylogenies"
+author: "Dr Jacob Househam"
+date: "18/05/2022"
+output: html_document
+---
+
+```{r library, message=FALSE, warning=FALSE, include=FALSE}
+library(DESeq2);library(phangorn);library(wesanderson);library(data.table);library(phylogram);library(dendextend)
+options(datatable.fread.datatable=FALSE)
+regcol <- c(A='#E31A1C',B='#377DB8',C='#4DAE49',D='#904A9A',Root='#808080');rcol <- regcol[c(1:4)]
+```
+
+```{r functions}
+estimate_clade_purity = function(x, types_use=c("L","D")) {
+    
+    sample_ids = unlist(x$tip.label[x$tip.label != "GL"])
+    annot = annotation_from_barcode(sample_ids, TRUE)
+    annot$node_id = seq_along(x$tip.label)[x$tip.label != "GL"]
+    rownames(annot) = sample_ids
+    
+    wh_use = annot$analyte %in% types_use | annot$analyte_name %in% types_use
+    if (sum(wh_use) == 0) return(NULL)
+    wgs_regions = with(annot, region[analyte_name == "WGS"])
+    
+    clade_purity =
+      lapply(which(wh_use), function(i) {
+        
+        if (sum(annot[sample_ids[i],"region"] == wgs_regions)<2) return(NULL)
+        node_id = which(x$tip.label == sample_ids[i])
+        
+        c_node = node_id
+        next_parent = TRUE
+        while (next_parent) {
+          parent = phangorn::Ancestors(x, c_node, type = "parent")
+          desc = phangorn::Descendants(x, parent, type = "tips")[[1]]
+          c_node = parent
+          if (!all(annot$analyte[match(desc, annot$node_id)] == "L")) {
+            next_parent = FALSE
+          }
+        }
+        
+        mt = match(desc[desc != i], annot$node_id)
+        wh = annot$analyte_name[mt] == "WGS"
+        #regions_wgs_desc = with(annot[mt,], region[analyte_name == "WGS"])
+        
+        data.frame(
+          desc_regions=annot$region[mt[wh]],
+          equal_region=annot$region[mt[wh]] == annot$region[i]
+        )
+      })
+    
+    names(clade_purity) = annot$sample_barcode[which(wh_use)]
+    clade_purity = clade_purity[!sapply(clade_purity, is.null)]
+    sapply(clade_purity, function(x) mean(x$equal_region))
+  }
+
+annotation_from_barcode = function (barcodes, extract = FALSE){
+    
+    epicc_regex = 
+      paste0(
+        "(?P<read_barcode>",
+        "(?P<lane_barcode>",
+        "(?P<iteration_barcode>",
+        "(?P<sample_barcode>",
+        "(?P<project>EPICC)_",
+        "(?P<patient>C[0-9]+)_",
+        "(?P<region>[A-Z])(?P<region_number>[0-9]+)_",
+        "(?P<sample_type>[BGL])(?P<sample_number>[0-9]+)_",
+        "(?P<analyte>[DRCBL])(?P<analyte_number>[0-9]+))",
+        "(?:_I(?P<iteration>[0-9]+))?)",
+        "(?(iteration)_(?P<lane_id>L[0-9A-Za-z]+)|)?)",
+        "(?(lane_id)_R(?P<read_number>[012]))?)"
+      )
+    
+    numeric_columns =    # list of columns/elements that 
+      c("region_number", # should be converted to numeric values
+        "sample_number",
+        "analyte_number",
+        "iteration",
+        "read_number")
+    
+    
+    # mapping of ids to annotations:
+    analyte_id_names = c(
+      "D" = "WGS",
+      "L" = "LP-WGS",
+      "C" = "ATAC-seq",
+      "R" = "RNA-seq",
+      "B" = "Bisulfit WGS"
+    )
+    
+    type_id_names = c(
+      "B" = "bulk", 
+      "G" = "gland", 
+      "L" = "interglandular",
+      "Z" = "blood"
+    )
+    
+    tt_order = c(
+      "normal",
+      "adenoma",
+      "cancer"
+    )
+    
+    if (!exists("msi_positiv")) { # default value for msi positive cases if variable does not exist globally 
+      msi_positiv = c("C536","C548","C516","C518","C552","C562")
+    }
+    
+    if (!exists("msi_positiv_adenoma")) { # default value for msi positive cases if variable does not exist globally 
+      msi_positiv_adenoma = c("C516")
+    }
+    
+    # check if the input is valid:
+    if (!is.vector(barcodes)) {
+      stop(paste("Argument", sQuote("barcodes"), "has to be a vector.\n"))
+    } else {
+      barcodes = as.character(barcodes)
+    }
+    
+    if (!is.logical(extract)) {
+      stop(paste("Argument", sQuote("extract"), "has to be a boolean.\n"))
+    }
+    
+    # check for non matching barcodes:
+    regexpr_result = regexpr(epicc_regex, barcodes, perl = TRUE)
+    nerr = sum(attr(regexpr_result, "match.length") == -1, na.rm=TRUE)
+    if (nerr) {
+      stop(sprintf("Error: %d barcode(s) do not meet EPICC specification.\n", nerr))
+    }
+    
+    
+    # check if a valid barcode can be extracted from the input:
+    barcodes_extracted = regmatches(barcodes, regexpr_result)
+    n_extr = sum(barcodes_extracted != barcodes)
+    if (n_extr) {
+      if (extract) {
+        msg = sprintf("Extracted %d barcode(s) from supplied strings.\n", n_extr)
+        warning(msg)
+      }
+      else {
+        msg = sprintf("Error: %d barcode(s) do not meet EPICC specification.\n", n_extr)
+        stop(msg)
+      }
+      regexpr_result = regexpr(epicc_regex, barcodes_extracted,  perl=TRUE)
+    }
+    
+    
+    # get the annotation elements:
+    annotation = 
+      regcapturedmatches(barcodes_extracted, regexpr_result) %>%
+      data.frame(stringsAsFactors = FALSE) %>% 
+      dplyr::mutate(lane_barcode=ifelse(lane_id == "", NA, lane_barcode)) %>% 
+      dplyr::mutate(iteration_barcode=ifelse(iteration == "", NA, iteration_barcode)) %>% 
+      dplyr::mutate(read_barcode=ifelse(read_number == "", NA, read_barcode)) %>% 
+      dplyr::mutate(tissue_barcode=gsub("_[DRCBL][0-9]+$", "", sample_barcode))
+    
+    if (sum(duplicated(barcodes)) == 0) {
+      rownames(annotation) = barcodes
+    }
+    
+    
+    # insert tissue type:
+    annotation$tissue_type =
+      with(annotation, {
+        dplyr::case_when( # some exceptions from the rule ...
+          region %in% c("F") & patient == "C542" ~ "cancer",
+          region %in% c("C", "D") & patient == "C516" ~ "adenoma",
+          region %in% c("E", "Z", "W") ~ "normal",
+          region %in% c("A", "B", "C", "D") ~ "cancer",
+          region %in% c("F", "G", "H", "I") ~ "adenoma"
+        ) %>% factor(tt_order, ordered=TRUE)
+      })
+    
+    
+    # insert long name for analytes:
+    annotation$analyte_name =
+      with(annotation, {
+        analyte_id_names[as.character(analyte)] %>% 
+          factor(analyte_id_names, ordered=TRUE)
+      })
+    
+    
+    # insert long name for sample type:
+    annotation$sample_type_name =
+      with(annotation, {
+        dplyr::case_when(
+          region == "Z" ~ "blood",
+          TRUE ~ type_id_names[as.character(sample_type)]
+        ) %>% factor(c(type_id_names), ordered=TRUE)
+      }) 
+    
+    
+    # convert some cols to numeric:
+    for (col in numeric_columns) {
+      annotation[, col] = as.numeric(as.character(annotation[, col]))    
+    }
+    
+    
+    # insert a label for each tumour (e.g. independed adenomas):
+    group = paste0(annotation$patient, ".", annotation$tissue_type)
+    wh_adenoma = grepl("adenoma", group) # add adenoma number to labels
+    adenoma_regions = annotation$region[wh_adenoma]
+    adenoma_regions = gsub("[CD]", "C+D", adenoma_regions)
+    
+    adenoma_region_label_list = 
+      split(adenoma_regions, annotation$patient[wh_adenoma]) %>% 
+      lapply(function(x) {
+        xu = unique(x)
+        if (length(xu) > 1) { l = paste0(" (", xu, ")") } else { l = "" }
+        names(l) = xu
+        return(l)
+      }) %>% unlist()
+    
+    key_label = paste0(annotation$patient[wh_adenoma], ".", adenoma_regions)
+    adenoma_labels = adenoma_region_label_list[key_label]
+    group[wh_adenoma] = paste0(group[wh_adenoma], adenoma_labels)
+    annotation$tumour_id = group
+    
+    
+    # add msi status
+    annotation$msi_status = 
+      with(annotation, {
+        dplyr::case_when(
+          tissue_type == "normal" ~ as.character(NA),
+          tissue_type == "cancer" & patient %in% msi_positiv ~ "MSI",
+          tissue_type == "adenoma" & patient %in% msi_positiv_adenoma ~ "MSI",
+          TRUE ~ "MSS"
+        )
+      })
+    
+    return(annotation)
+  }
+
+regcapturedmatches = function (x, m)  {
+  if (length(x) != length(m)) 
+    stop(gettextf("%s and %s must have the same length", 
+                  sQuote("x"), sQuote("m")), domain = NA)
+  ili = is.list(m)
+  useBytes = if (ili) {
+    any(unlist(lapply(m, attr, "useBytes")))
+  }
+  else {
+    any(attr(m, "useBytes"))
+  }
+  if (useBytes) {
+    asc = iconv(x, "latin1", "ASCII")
+    ind = is.na(asc) | (asc != x)
+    if (any(ind)) 
+      Encoding(x[ind]) = "bytes"
+  }
+  if (ili) {
+    if (any(sapply(m, function(x) {
+      is.null(attr(x, "capture.start"))
+    }) == T)) {
+      stop("No capture data found (did you use perl=T?)")
+    }
+    starts = lapply(m, function(x) {
+      attr(x, "capture.start")
+    })
+    lengths = lapply(m, function(x) {
+      attr(x, "capture.length")
+    })
+  }
+  else {
+    if (is.null(attr(m, "capture.start"))) {
+      stop("No capture data found (did you use perl=T?)")
+    }
+    x = list(x)
+    starts = list(attr(m, "capture.start"))
+    lengths = list(attr(m, "capture.length"))
+  }
+  cleannames = function(x) {
+    if (!is.null(colnames(x))) {
+      colnames(x) = make.unique(make.names(colnames(x)))
+    }
+    x
+  }
+  starts = lapply(starts, cleannames)
+  lengths = lapply(lengths, cleannames)
+  Substring = function(x, starts, lens) {
+    if (all(starts < 0)) {
+      return(character())
+    }
+    else {
+      x = t(mapply(function(x, st, ln) substring(x, st, st + ln - 1), x, data.frame(t(starts)), data.frame(t(lens)), 
+                   USE.NAMES = F))
+      if (!is.null(colnames(starts))) {
+        colnames(x) = colnames(starts)
+      }
+      x
+    }
+  }
+  y = Map(function(x, sos, mls) {
+    Substring(x, sos, mls)
+  }, x, starts, lengths, USE.NAMES = FALSE)
+  if (ili) {
+    y
+  }
+  else {
+    y[[1]]
+  }
+} 
+```
+
+## Load trees and dendrograms
+```{r load_expression_and_info}
+# 1) Load expression dendrograms
+rnadends <- readRDS('intermediates/exp_dists_and_dends.rds')$dends
+patrna <- names(rnadends)
+
+# 2) Load DNA phylogenies with all samples
+# Originally compiled from "EPICC/prospective_cohort/data_analysis/parsimony_trees/wgs_trees_with_assigned_lowpass_v2_plus_wgs/datasets/trees_filtered/"
+treelist <- readRDS('intermediates/all.trees.rds')
+patdna <- names(treelist)
+```
+
+## Get intermixing scores for DNA trees and RNA dendrograms
+```{r get_intermixing_scores}
+# Intermixing for DNA trees
+intermix <- rep(0,length(patdna));names(intermix) <- patdna
+for(pat in patdna) {
+  trytree <- treelist[[pat]]
+  cpur <- estimate_clade_purity(trytree)
+  intermix[pat] <- 1-mean(cpur[which(!is.na(cpur))])
+}
+newmix <- intermix[which(!is.na(intermix))]
+
+# Intermixing for RNA dendrograms
+rnamix <- rep(0,length(patrna));names(rnamix) <- patrna
+for(pat in patrna) {
+  curdend <- as.phylo(rnadends[[pat]])
+  curdend$tip.label <- paste0('EPICC_',pat,'_',curdend$tip.label,'_D1')
+  cpur <- estimate_clade_purity(curdend)
+  rnamix[pat] <- 1-mean(cpur[which(!is.na(cpur))])
+}
+matchpat <- patrna[which(patrna %in% patdna)]
+```
+
+## Plot correlation between DNA and RNA intermixing scores - Figure S13
+```{r plot_intermixing_scores}
+res <- lm(rnamix[matchpat]~newmix[matchpat]);sumres <- summary(res)
+
+pdf('figures/figS13.mixing_score_DNA_vs_RNA.pdf')
+par(mar=c(5,5,2,1),font.axis=2,font=2,font.lab=2,cex.axis=1.3)
+plot(newmix[matchpat],rnamix[matchpat],pch=16,cex.lab=1.5,bty='n',cex=1.5,las=1,col='white',
+     xlab='Phylogenetic tree intermixing score',ylab='Gene expression dendrogram intermixing score',xlim=c(0,0.3),ylim=c(0,1))
+abline(a=coef(res)[1],b=coef(res)[2],lty=3,lwd=3,col='dimgray')
+points(newmix[matchpat],rnamix[matchpat],pch=16,cex=1.5,col='firebrick3')
+text(0.25,0.65,labels=paste0('p = ',signif(sumres$coefficients[2,4],3)),col='dimgray',cex=1.5)
+text(newmix[matchpat],rnamix[matchpat],labels=matchpat,pos = c(1,4,4,3,rep(4,3),2,rep(4,5),1,1,3,4),col='dimgray',cex=1)
+dev.off()
+```

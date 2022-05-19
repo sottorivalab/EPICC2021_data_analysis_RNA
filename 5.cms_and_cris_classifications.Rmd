@@ -1,7 +1,7 @@
 ---
 title: "Assessment of CMS and CRIS classification heterogeneity"
 author: "Dr Jacob Househam"
-date: "25/06/2021"
+date: "19/05/2022"
 output: html_document
 ---
 
@@ -71,9 +71,9 @@ for(i in c(1:length(patients))) {
 ```
 
 ## Plot results of CMS and CRIS classification
-## Figure S2 A-C
+## Figure S4 A-C
 ```{r plot_cms_and_cris}
-# Plot all CMS and CRIS results - Figure S1 A&B
+# Plot all CMS and CRIS results - Figure S4 A&B
 pdf('figures/figS2AB.cms_and_cris_results.pdf')
 par(mar=c(4.5,4.5,3,1),font=2,font.axis=2,cex.axis=1.35)
 cmsplot <- t(patRes[,grep('CMS',colnames(patRes))])
@@ -93,18 +93,18 @@ dev.off()
 propRes <- patRes
 for(i in c(1:nrow(patRes))) {
   for(j in c(1:ncol(patRes))) {
-    propRes[i,j] <- patRes[i,j]/sum(patRes[i,])
+    propRes[i,j] <- patRes[i,j]/patRes$NumSam[i]
   }
 }
 
-# Plot heatmap of CMS vs CRIS - Figure S1C
-pdf('figures/figS2D.cmscris_heatmap.pdf')
+# Plot heatmap of CMS vs CRIS - Figure S4C
+pdf('figures/figS4C.cmscris_heatmap.pdf')
 pheatmap(t(patRes[,c(1:9)]),scale='column',fontsize=15,cellwidth=20,cellheight=40)
 dev.off()
 ```
 
 ## Analyse and plot enrichment of gene groups vs classifications
-## Figure S2D
+## Figure S4D
 ```{r gene_groups_vs_classifications}
 # Determine the number of genes used in CMS and CRIS classification
 # which belong to each gene group
@@ -131,8 +131,8 @@ for(i in c(1:4)) {
 }
 sigs <- c();for(p in p.adjust(c(enrichCMS$pval,enrichCRIS$pval),method='fdr')) { sigs <- c(sigs,getstars(p)) }
 
-# Plot Figure S1D
-pdf('figures/figS2D.groupenrichmentCMSCRIS.pdf')
+# Plot Figure S4D
+pdf('figures/figS4D.groupenrichmentCMSCRIS.pdf')
 par(mar=c(5,5.1,1,0.6),font.lab=2,cex.axis=1.5,font.axis=2,font=2)
 xx <- barplot(rbind(enrichCMS$OR,enrichCRIS$OR),beside=T,axes=F,las=2,density=rep(c(NA,20),4),
               col=rep(ngroupcol,each=2),border=rep(ngroupcol,each=2),ylim=c(0,2.2));abline(h=1,lty=3,lwd=2)
@@ -146,3 +146,115 @@ text(x=c(xx[1,],xx[2,]),y=0.1,labels=sigs,cex=1.5,font=2)
 legend(x=0.5,y=2.1,legend=c('CMS','CRIS'),cex=2,fill='gray60',bty='n',density=c(NA,20),border=c('gray60'))
 dev.off()
 ```
+
+## Re-analyse, only using confident/significant callss
+```{r get_cms_and_cris}
+# Concatenate calls
+callingRes <- data.frame(Samples=row.names(cms),CMS=cms$prediction,CRIS=cris$prediction)
+
+# Organise results by patient 
+patRes <- data.frame(CMS1=rep(0,length(patients)),CMS2=0L,CMS3=0L,CMS4=0L,CRISA=0L,CRISB=0L,CRISC=0L,CRISD=0L,CRISE=0L,NumSam=as.numeric(table(allpats)),row.names=patients)
+for(i in c(1:length(patients))) {
+  pat <- patients[i]
+  patsam <- tsam[grep(pat,tsam)]
+  for(cat in paste0('CMS',c(1:4))) {
+    patRes[i,cat] <- length(which(callingRes[which(callingRes$Samples %in% patsam),'CMS']==cat))
+  }
+  for(cat2 in paste0('CRIS',c('A','B','C','D','E'))) {
+    patRes[i,cat2] <- length(which(callingRes[which(callingRes$Samples %in% patsam),'CRIS']==cat2))
+  }
+}
+```
+
+## Plot results of CMS and CRIS classification - only confident calls
+## Figure S4 E&F
+```{r plot_cms_and_cris_confident}
+# Plot all CMS and CRIS results - Figure S4 A&B
+pdf('figures/figS4EF.cms_and_cris_confident_results.pdf')
+par(mar=c(4.5,4.5,3,1),font=2,font.axis=2,cex.axis=1.35)
+cmsplot <- t(patRes[,grep('CMS',colnames(patRes))])
+barplot(cmsplot,col=colcms,border=NA,ylim=c(0,40),las=2)
+mtext(side=2,text='Number of samples',line=2.75,font=2,xpd=T,cex=1.35)
+text(x=10,y=42,labels='CMS',font=2,xpd=T,cex=1.4)
+legend(x=0,y=41,bty='n',pt.cex=2,cex=1.2,fill=colcms[1:4],legend=c('CMS1','CMS2','CMS3','CMS4'),border=NA,xpd=T)
+
+crisplot <- t(patRes[,grep('CRIS',colnames(patRes))])
+barplot(crisplot,col=colcris,border=NA,ylim=c(0,40),las=2)
+mtext(side=2,text='Number of samples',line=2.75,font=2,xpd=T,cex=1.35)
+text(x=10,y=42,labels='CRIS',font=2,xpd=T,cex=1.4)
+legend(x=0,y=41,bty='n',pt.cex=2,cex=1.1,fill=colcris[1:5],legend=c('CRIS-A','CRIS-B','CRIS-C','CRIS-D','CRIS-E'),border=NA,xpd=T)
+dev.off()
+
+# Get proportions per tumour for plotting
+propRes <- patRes
+for(i in c(1:nrow(patRes))) {
+  for(j in c(1:ncol(patRes))) {
+    propRes[i,j] <- patRes[i,j]/patRes$NumSam[i]
+  }
+}
+
+# Plot heatmap of CMS vs CRIS - Figure S4C
+pdf('figures/figS4C.cmscris_heatmap.pdf')
+pheatmap(t(patRes[,c(1:9)]),scale='column',fontsize=15,cellwidth=20,cellheight=40)
+dev.off()
+```
+
+## Plot heatmap results
+## Figure S4 G&H
+```{r plot_cms_and_cris_confident}
+# Plot heatmpas of CMS/CRIS centroid distances for each tumour (use C550 as example for Figure S4 G&H)
+mybreaks <- seq(0.6,0.8,by=0.005)
+pdf('figures/figS4GH.cms_and_cris_distance_heatmaps.pdf',height=17,width=4)
+for(pat in patients) {
+  patcmsdf <- cms[grep(pat,row.names(cms)),]
+  
+  patcms <- patcmsdf[,c(2:5)];colnames(patcms) <- paste0('CMS',c(1:4))
+  
+  bordcms <- c();starcms <- patcms 
+  for(i in c(1:ncol(patcms))) {
+    for(j in c(1:nrow(patcms))) {
+      if(i==which.min(patcms[j,])) {
+        bordcms <- c(bordcms,'black')
+        if(!is.na(patcmsdf[j,"prediction"])) {
+          starcms[j,i] <- getstars(patcmsdf[j,"FDR"])
+        } else {
+          starcms[j,i] <- ""
+        }
+      } else {
+        bordcms <- c(bordcms,NA);starcms[j,i] <- ""
+      }
+    }
+  }
+  
+  pheatmap(patcms,cluster_cols = F,cluster_rows = F,
+           color = rev(wes_palette("Zissou1", length(mybreaks)-1, type = "continuous")),
+           breaks=mybreaks,border_color=bordcms,display_numbers= starcms,
+           fontsize_number = 15,cellwidth = 30,cellheight = 30)
+  
+  patcrisdf <- cris[grep(pat,row.names(cris)),]
+  patcris <- patcrisdf[,c(2:6)];colnames(patcris) <- paste0('CRIS',c('A','B','C','D','E'))
+  
+  bordcris <- c();starcris <- patcris
+  for(i in c(1:ncol(patcris))) {
+    for(j in c(1:nrow(patcris))) {
+      if(i==which.min(patcris[j,])) {
+        bordcris <- c(bordcris,'black')
+        if(!is.na(patcrisdf[j,"prediction"])) {
+          starcris[j,i] <- getstars(patcrisdf[j,"FDR"])
+        } else {
+          starcris[j,i] <- ""
+        }
+      } else {
+        bordcris <- c(bordcris,NA);starcris[j,i] <- ""
+      }
+    }
+  }
+  
+  pheatmap(patcris,cluster_cols = F,cluster_rows = F,
+           color = rev(wes_palette("Zissou1", length(mybreaks)-1,type = "continuous")),
+           breaks=mybreaks,border_color=bordcris,display_numbers= starcris,
+           fontsize_number = 15,cellwidth = 30,cellheight = 30)
+}
+dev.off()
+```
+

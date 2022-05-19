@@ -1,7 +1,7 @@
 ---
 title: "Run and plot pathway enrichment phylogenetic signal analysis"
 author: "Dr Jacob Househam"
-date: "21/06/2021"
+date: "19/05/2022"
 output: html_document
 ---
 
@@ -110,12 +110,12 @@ saveRDS(pathway_lambda_list,file='results/pathway_lambda_data.rds')
 ```
 
 ## Analyse and plot the results of the phylogenetic pathway enrichment analysis
-### Figure 1L&M and Figure S6
+### Figure 1L&M and Figure S10
 ```{r plot_phylogenetic_pathway_results}
 reclam <- matrix(0L,nrow=nrow(pathdf),ncol=length(tinfo$patients))
 colnames(reclam) <- tinfo$patients;row.names(reclam) <- row.names(pathdf)
 recstars <- recpval <- reclam
-pdf('figures/fig1LM.lambda_analysis_pathways.pdf',height=8,width=5)
+pdf('figures/fig1LM&S10.lambda_analysis_pathways.pdf',height=8,width=5)
 for(pat in tinfo$patients) {
   resdf <- pathway_lambda_list[[pat]]
   try <- pathway_lambda_enrich[[pat]]
@@ -127,6 +127,8 @@ for(pat in tinfo$patients) {
   recpval[row.names(combdf),pat] <- combdf$MedPval
   
   trimtree <- treelist[[pat]][[1]]
+  # code to get dendrogram from tree
+  #tmpdend <- phylogram::as.dendrogram(trimtree);dendlist[[pat]] <- tmpdend
   seldf <- combdf[which(combdf$combstars!=''),]
   
   regions <- gsub('^(\\S)\\d+_\\S+','\\1',trimtree$tip.label)
@@ -141,7 +143,7 @@ for(pat in tinfo$patients) {
   pheatmap(explot,show_rownames = F,show_colnames=T,cluster_rows=F,cluster_cols=F,treeheight_col=0,
            border_color=NA,fontsize = 6,fontsize_col = 3,
            color=wes_palette("Zissou1", length(mybreaks)-1, type = "continuous"),breaks=mybreaks,
-           annotation_col=combdf[,c('MedPval','Class','Group')],
+           annotation_col=combdf[,c('MedLambda','MedPval','Class','Group')],
            annotation_colors=col_list)
   
   if(nrow(seldf)>1) {
@@ -153,7 +155,7 @@ for(pat in tinfo$patients) {
     pheatmap(explot,show_rownames = F,show_colnames=T,cluster_rows=F,cluster_cols=F,treeheight_col=0,
              border_color=NA,fontsize = 6,fontsize_col = 3,
              color=wes_palette("Zissou1", length(mybreaks)-1, type = "continuous"),breaks=mybreaks,
-             annotation_col=seldf[,c('MedPval','Class','Group')],
+             annotation_col=seldf[,c('MedLambda','MedPval','Class','Group')],
              annotation_colors=col_list)
   }
 }

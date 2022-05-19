@@ -1,7 +1,7 @@
 ---
 title: "Perform power analysis of phylogenetic analysis"
 author: "Dr Jacob Househam"
-date: "24/06/2021"
+date: "19/05/2022"
 output: html_document
 ---
 
@@ -33,7 +33,7 @@ getpower <- function(node,inc=100) {
 ```
 
 ## Firstly make and plot example tree and phylogenetic analysis
-## Figure 3 E&F
+## Figure 3E&F
 ```{r example_tree}
 # Load all trees and info
 treelist <- readRDS('intermediates/pgls.trees.rds')
@@ -125,7 +125,7 @@ saveRDS(all_compiled_power,file='results/phylogenetic_power_median_100.rds')
 ```
 
 ## Plot the results of the phylogenetic power analysis
-### Figure S5 A-H
+### Figure S9 A-H
 ```{r plot_power}
 # Prepare percpower dataframe
 percpower <- rep(NA,length(tinfo$patients));names(percpower) <- tinfo$patients
@@ -147,8 +147,8 @@ for(pat in tinfo$patients) {
   }
   
   # Plot Figure S4 A-H
-  pdf(paste0('figures/figS5.power_sim_100_median.',pat,'.pdf'),width=9)
-    mybreaks <- seq(0,1,by=0.01);rowdf <- data.frame(PercIncrease=seq.int(0,100,by=5));row.names(rowdf) <- row.names(powerdf)
+  pdf(paste0('figures/figS9.power_sim_100_median.',pat,'.pdf'),width=9)
+  mybreaks <- seq(0,1,by=0.01);rowdf <- data.frame(PercIncrease=seq.int(0,100,by=5));row.names(rowdf) <- row.names(powerdf)
   pheatmap(powerdf,show_rownames=F,show_colnames=T,main=paste0(pat,' Median Power'),cluster_rows=F,angle_col=angle,annotation_names_row=F,
            cluster_cols=F,border_color=NA,fontsize = 10,breaks=mybreaks,annotation_row=rowdf,
            color=wes_palette("Zissou1", length(mybreaks)-1, type = "continuous"))

@@ -1,0 +1,89 @@
+---
+title: "Plot phylogenetic trees and expression heatmaps with clustering fot matched DNA-RNA samples (8 tumours)"
+author: "Dr Jacob Househam"
+date: "18/05/2022"
+output: html_document
+---
+
+```{r library, message=FALSE, warning=FALSE, include=FALSE}
+library(DESeq2);library(phangorn);library(wesanderson);library(pheatmap);library(data.table);library(phylogram);library(dendextend)
+options(datatable.fread.datatable=FALSE)
+regcol <- c(A='#E31A1C',B='#377DB8',C='#4DAE49',D='#904A9A',Root='#808080');rcol <- regcol[c(1:4)]
+```
+
+## Load tree and expression data
+```{r load_tree_and_expression}
+# 1) Load tree info
+treelist <- readRDS('intermediates/pgls.trees.rds')
+tinfo <- readRDS('intermediates/pgls.infotrees.rds')
+dendlist <- lapply(treelist,function(x) { phylogram::as.dendrogram(x[[1]])} )
+
+# 2) Load DESeq2 normalised gene expression
+vsd <- readRDS('intermediates/allgenes.vsd.ensembl.rds')
+vsd@colData$Region <- gsub('^C\\d+_(\\S)\\S+','\\1',row.names(vsd@colData))
+geneexp <- as.data.frame(assay(vsd))
+
+# 3) Input expression filtering from other script
+genedf <- readRDS('results/gene_clustering_and_id_conversion.rds')
+
+# 4) Load sample data
+samples <- read.table('input_files/ListRNAPass.EPICC.txt')[,1]
+dnasam <- readRDS('input_files/dna_sample_data.rds')
+dnarna <- dnasam$Sample[which(dnasam$Sample %in% samples)]
+```
+
+## Plot DNA phylogenies as dendrograms, clusterred heatmaps and get tanglegram statistics
+### Figure S11 (deconstructed)
+```{r plot_dna_get_stats}
+cophcors <- c()
+pdf('figures/figS11.expressed_dnatree_expclust_tangles.pdf',height=8,width=5)
+for(pat in tinfo$patients) {
+  
+  trimtree <- treelist[[pat]][[1]]
+  treesam <- paste0(pat,'_',trimtree$tip.label)
+  try <- as.data.frame(t(geneexp[genedf$ensembl_gene_id,treesam]))
+  row.names(try) <- gsub('C\\d+_(\\S+)','\\1',row.names(try))
+  
+  # Plot DNA phylogeny
+  regions <- gsub('^(\\S)\\d+_\\S+','\\1',trimtree$tip.label)
+  options(scipen = -1);par(mar=c(0,0,2,0),xpd=T)
+  plot.phylo(trimtree,type="phylogram",align.tip.label = T,edge.width=3,
+             font=2,cex=0.9,tip.color=regcol[c(regions,'Root')],label.offset=20)
+  title(main=pat)
+  
+  # Remove gene with no variance (i.e. zero expression in particular tumour)
+  curvars <- apply(try,2,sd)
+  explot <- try[,which(curvars!=0)]
+  explot <- scale_mat(explot,'column')
+  
+  # Plot clustered heatmap
+  mybreaks <- seq(floor(min(explot)),ceiling(max(explot)),by=0.05)
+  rowannot <- data.frame(Region=gsub('^(\\S)\\S+','\\1',row.names(explot)));row.names(rowannot) <- row.names(explot)
+  mat <- pheatmap(explot[c(nrow(explot):1),],show_rownames = T,show_colnames=F,cluster_rows=T,cluster_cols=T,treeheight_col=0,
+                  border_color=NA,fontsize = 10,legend = F,treeheight_row = 100,
+                  color=wes_palette("Zissou1", length(mybreaks)-1, type = "continuous"),breaks=mybreaks)
+  
+  patdend <- as.dendrogram(mat$tree_row)
+  for(reg in names(rcol)) { patdend <- set(patdend,"by_labels_branches_col",
+                                           value = labels(patdend)[which(gsub('^(\\S)\\S+$','\\1',labels(patdend))==reg)],
+                                           type = "all",TF_value=rcol[reg]) }
+  patdend <- set(patdend,"labels_color", value = rcol[gsub('^(\\S)\\S+$','\\1',labels(patdend))])
+  patdend <- set(patdend,"branches_lwd", 3)
+  
+  dnadend <- dendlist[[pat]]
+  for(reg in names(rcol)) { dnadend <- set(dnadend,"by_labels_branches_col",
+                                           value = labels(dnadend)[which(gsub('^(\\S)\\S+$','\\1',labels(dnadend))==reg)],
+                                           type = "all",TF_value=rcol[reg]) }
+  dnadend <- set(dnadend,"labels_color", value = rcol[gsub('^(\\S)\\S+$','\\1',labels(dnadend))])
+  dnadend <- set(dnadend,"branches_lwd", 3)
+  
+  bothdends <- dendlist(dnadend,patdend)
+  
+  curcor <- cor.dendlist(bothdends);curentangle <- entanglement(bothdends)
+  cophcors <- c(cophcors,curcor[1,2]);entangles <- c(entangles,curentangle)
+  tanglegram(bothdends,left_dendo_mar=c(4,4,4,4),right_dendo_mar=c(4,4,4,4),main_left = paste0(pat,' DNA'),main_right= paste0(pat,' RNA'))
+  mtext(side=3,text=paste0('Entanglement = ',signif(curentangle,3),', Correlation = ',signif(curcor[1,2],3)),line=0,font=2,cex=0.75)
+}
+dev.off()
+```
+

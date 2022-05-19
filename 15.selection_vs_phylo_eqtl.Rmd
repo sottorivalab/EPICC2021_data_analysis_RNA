@@ -1,7 +1,7 @@
 ---
-title: "Combine eQTL and Phylo with selection"
+title: "Combine eQTL and phylogenetic signal analsyses with selection"
 author: "Dr Jacob Househam"
-date: "23/06/2021"
+date: "19/05/2022"
 output: html_document
 ---
 
@@ -33,7 +33,7 @@ selection <- as.data.frame(readxl::read_xlsx('input_files/spatial_and_selection_
 
 
 ## Integrate and plot selection and space vs phylo
-## Figure S20A&B
+## Figure S37A&B
 ```{r selection_and_space_vs_phylo}
 # Load actual phylogenetic genes table
 phylolist <- readRDS('results/gene_lambda_data.rds');phylopat <- names(phylolist)
@@ -51,7 +51,7 @@ phyloselect$Phylo <- colSums(allphylores)
 selres <- wilcox.test(Phylo~Selection,data=phyloselect)
 spares <- wilcox.test(Phylo~Spatial,data=phyloselect)
 
-pdf('figures/figS20A.selection_vs_phylo.pdf')
+pdf('figures/figS37A.selection_vs_phylo.pdf')
 par(font=2,font.axis=2,font.lab=2,mar=c(4.5,5.5,2,1))
 boxplot(Phylo~Selection,data=phyloselect,las=1,frame=F,col=scales::alpha(colsel,0.5),xlab='',ylab='',ylim=c(0,2500),boxcol=colsel,boxlwd=2.5,medcol=colsel,medlwd=3.5,
         staplecol=colsel,staplelwd=2.5,whiskcol=colsel,whisklwd=2.5,cex.axis=1.25,
@@ -61,7 +61,7 @@ mtext(side=2,text='Number of significant phylogenetic genes',line=4,cex=1.25)
 mtext(side=3,line=0.5,text=paste0('wilcoxon p-value = ',signif(selres$p.value,3)))
 dev.off()
 
-pdf('figures/figS20B.spatial_vs_phylo.pdf')
+pdf('figures/figS37B.spatial_vs_phylo.pdf')
 par(font=2,font.axis=2,font.lab=2,mar=c(4.5,5.5,2,1))
 boxplot(Phylo~Spatial,data=phyloselect,las=1,frame=F,col=scales::alpha(colsel,0.5),xlab='',ylab='',ylim=c(0,2500),boxcol=colsel,boxlwd=2.5,medcol=colsel,medlwd=3.5,
         staplecol=colsel,staplelwd=2.5,whiskcol=colsel,whisklwd=2.5,cex.axis=1.25,
@@ -73,7 +73,7 @@ dev.off()
 ```
 
 ## Integrate and plot selection and space vs eQTL
-## Figure S20C&D
+## Figure S37C&D
 ```{r selection_and_space_vs_eqtl}
 eqtlpat <- unique(matchpat)
 eqtlselect <- selection[which(selection$Tumour %in% eqtlpat),];row.names(eqtlselect) <- c(1:nrow(eqtlselect))
@@ -95,7 +95,7 @@ names(tots) <- names(sigs) <- names(props) <- eqtlpat
 reseqtl <- wilcox.test((as.numeric(props)*100)~eqtlselect$Selection)
 reseqtlspa <- wilcox.test((as.numeric(props)*100)~eqtlselect$Spatial)
 
-pdf('figures/figS20C.selection_vs_eqtls.pdf')
+pdf('figures/figS37C.selection_vs_eqtls.pdf')
 par(font=2,font.axis=2,font.lab=2,mar=c(4.5,4,2,1))
 boxplot(as.numeric(props)*100~eqtlselect$Selection,las=1,frame=F,col=scales::alpha(colsel,0.5),xlab='',ylab='',ylim=c(0,10),boxcol=colsel,boxlwd=2.5,medcol=colsel,medlwd=3.5,
         staplecol=colsel,staplelwd=2.5,whiskcol=colsel,whisklwd=2.5,cex.axis=1.25,
@@ -125,7 +125,7 @@ selregs <- abs(mutsigdf[which(mutsigdf$ID %in% selecteds),'Mutes'])
 allregs <- list(neuregs,selregs);names(allregs) <- c('Neutral','Selected')
 sigregs <- wilcox.test(allregs$Neutral,allregs$Selected)
 
-pdf('figures/figS20D.selection_vs_regcoefs.pdf')
+pdf('figures/figS37D.selection_vs_regcoefs.pdf')
 par(mar=c(4.5,4.5,1,1),font=2,font.axis=2,font.lab=2,cex.axis=1.5)
 vioplot(newlist,las=2,col=ifelse(newselect$Selection=='Neutral',colsel[1],colsel[2]),border=ifelse(newselect$Selection=='Neutral',colsel[1],colsel[2]),axes=F,drawRect=F,ylim=c(0,6))
 mtext(side=2,text='Absolute regression coefficients of significant mut eQTLs',line=2.8,cex=1.3)

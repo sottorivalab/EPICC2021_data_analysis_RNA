@@ -1,12 +1,12 @@
 ---
 title: "Analyse eQTL results"
 author: "Dr Jacob Househam"
-date: "23/06/2021"
+date: "18/05/2022"
 output: html_document
 ---
 
 ```{r library, message=FALSE, warning=FALSE, include=FALSE}
-library(wesanderson);library(EnhancedVolcano);library(vioplot)
+library(wesanderson);library(EnhancedVolcano);library(vioplot);library(pwr)
 ```
 
 ```{r setup}
@@ -83,7 +83,7 @@ dev.off()
 ```
 
 ## Analyse and plot directionality of CNA vs expression associations
-### Figure S7
+### Figure S17
 ```{r cna_pos_neg}
 cnasigdf <- modsigdf[which(modsigdf$CNAadjP<0.05),];row.names(cnasigdf) <- c(1:nrow(cnasigdf))
 cnasigdf$Direction <- ifelse(cnasigdf$CNAes>=0,'Pos','Neg')
@@ -99,7 +99,7 @@ for(i in c(1:nrow(cnagendf))) {
   prop4 <- c(prop4,length(which(curcna==4))/ncol(listmat$CNA))
 }
 
-pdf('figures/figS7.CNA_pos_vs_neg_eQTLs.pdf',width=12,height=12)
+pdf('figures/figS17.CNA_pos_vs_neg_eQTLs.pdf',width=12,height=12)
 layout(matrix(c(1:4),nrow=2,byrow=T))
 par(mar=c(4,4,4,1),cex.axis=1.35,font=2,font.axis=2,font.lab=2)
 library(vioplot);options(scipen=-1);ymax <- c(0.3,1,0.6,0.4)
@@ -132,6 +132,7 @@ matcomp['NS','Pos'] <- length(which(nsmut$Mutes>0))
 matcomp['NS','Neg'] <- length(which(nsmut$Mutes<0))
 matcomp['Enh','Pos'] <- length(which(enhmut$Mutes>0))
 matcomp['Enh','Neg'] <- length(which(enhmut$Mutes<0))
+ns_res <- chisq.test(matcomp[1,]);enh_res <- chisq.test(matcomp[2,])
 
 # Plot the regression coefficients of both to illustrate difference
 pdf('figures/fig2E.violin_ns_vs_enh_effects.pdf',width=5,height=7)
@@ -265,6 +266,41 @@ mtext(side=3,at=apply(xx,2,function(x){x[2]-(x[2]-x[1])/2 }),text=paste0('OR=',s
 mtext(side=3,at=apply(xx,2,function(x){x[2]-(x[2]-x[1])/2 }),text=paste0('p=',signif(pvals,2)),line=0.5,cex=1.5)
 legend(x=6.5,y=6.9,xpd=T,cex=1.4,legend=colnames(mat),bty='n',fill='gray60',density=c(NA,20),border=c('gray60'))
 dev.off()
+```
 
+## Run and plot eQTL power analysis - Figure S19
+```{r plot_eQTL_power}
+sigres <- newallDF[which(newallDF$ModeladjP<0.01),];row.names(sigres) <- c(1:nrow(sigres))
+mutres <- sigres[which(sigres$MutadjP<0.05),];row.names(mutres) <- c(1:nrow(mutres))
+
+eqtles <- abs(mutres$Mutes);pwreqtl <- c()
+for(i in c(1:length(eqtles))) {
+  curpwr <- pwr.f2.test(u=5,v=19-4-1,f2=eqtles[i],sig.level=0.05)
+  pwreqtl <- c(pwreqtl,curpwr$power*100)
+}
+
+inters <- c(seq(from=0.5,to=3,by=0.5),7);eslist <- pwrlist <- list()
+for(j in c(1:length(inters))) {
+  bottom <- ifelse(j==1,0,inters[j-1]);top <- inters[j]
+  eslist[[paste0(bottom,'-',top)]] <- eqtles[which(eqtles>bottom & eqtles<=top)]
+  pwrlist[[paste0(bottom,'-',top)]] <- pwreqtl[which(eqtles>bottom & eqtles<=top)]
+}
+
+pdf('figures/figS19.eqtl_power.pdf')
+plotcol <- 'white'
+par(mfrow=c(1,1),font=2,font.axis=2,font.lab=2,mar=c(7,4,2,0.5))
+boxplot(pwrlist,col=scales::alpha(plotcol,0.5),frame=F,
+        xlab='',ylab='',boxcol=plotcol,boxlwd=1.5,medcol=plotcol,medlwd=2.5,
+        staplecol=plotcol,staplelwd=1.5,whiskcol=plotcol,whisklwd=1.5,cex.axis=1,
+        outpch=16,outcex=0.5,outcol=scales::alpha(plotcol,0.5),las=2)
+grid(lwd=1.5);abline(h=80)
+plotcol <- 'firebrick3'
+boxplot(pwrlist,col=scales::alpha(plotcol,0.5),frame=F,
+        xlab='',ylab='',boxcol=plotcol,boxlwd=1.5,medcol=plotcol,medlwd=2.5,
+        staplecol=plotcol,staplelwd=1.5,whiskcol=plotcol,whisklwd=1.5,cex.axis=1,
+        outpch=16,outcex=0.5,outcol=scales::alpha(plotcol,0.5),las=2,add=T)
+mtext(side=1,text='Effect Size',line=5.5,cex=1.2);mtext(side=2,text='Power',line=2.75,cex=1.2)
+mtext(side=1,at=c(1:length(pwrlist)),text=paste0('n=',as.numeric(sapply(pwrlist,length))),line=c(3.2,4.2))
+dev.off()
 ```
 

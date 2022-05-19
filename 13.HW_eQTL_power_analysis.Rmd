@@ -1,7 +1,7 @@
 ---
 title: "Examining eQTLs in Hartwig cohort + post-hoc power analysis"
 author: "Dr Jacob Househam"
-date: "24/06/2021"
+date: "19/05/2022"
 output: html_document
 ---
 
@@ -56,7 +56,7 @@ write.table(hg19loci,file='intermediates/hg19loci.txt',row.names=F,col.names=F,s
 ## Load mutations for Hartwig CRC mets and record overlap with eQTLs
 ```{r get_mutated_hartwig}
 # Read in metadata and select for CRC metastases
-meta <- fread('input/metadata_withstats.tsv',data.table=F)
+meta <- fread('<path_to_metadata_tsv>',data.table=F)
 crcmeta <- meta[which(meta$primaryTumorLocation=='Colon/Rectum'),];row.names(crcmeta) <- c(1:nrow(crcmeta))
 
 # Load one vcf at a time, recording mutations present in eQTl analysis
@@ -121,6 +121,7 @@ mutmut <- mutidDF[which(mutidDF$ModeladjP<0.01 & mutidDF$MutadjP<0.05 & mutidDF$
 
 # Analyse eQTL in HW (if >=2 mutated matched DNA-RNA samples in HW)
 signcorrect <- c();mut_pvals <- c()
+tmpData <- data.frame(Expression=rep(0,length(hwrnasam)),Mut='WT',Purity=crcmeta[match(hwrnasam,crcmeta$sampleId),'tumorPurity'])
 for(i in c(1:nrow(mutmut))) {
   curmut <- mutmut[i,];mut <- curmut$Locus
   curgen <- curmut$Ensembl
@@ -144,13 +145,13 @@ mutmut$SignCorrect <- signcorrect
 ```
 
 ## Plot significant HW eQTLs
-### Figure S7 A-I
+### Figure S18 A-I
 ```{r plot_sig_HW_eQTLs}
 # Filter for eQTLs which validate in HW
 sigmut <- mutmut[which(mutmut$hw_pval<0.05 & mutmut$SignCorrect=='Correct' & mutmut$HW_RNArec>=2),]
 
-# Plot Figure S7 A-I
-pdf('figures/figS7AI.hw_mut_qtls_sigexp.pdf')
+# Plot Figure S18 A-I
+pdf('figures/figS18AI.hw_mut_qtls_sigexp.pdf')
 layout(matrix(c(1:4),nrow=2,byrow=T))
 tmpData <- data.frame(Expression=rep(0,length(hwrnasam)),Mut='WT')
 par(mar=c(4,3.5,2.5,1),font=2,font.axis=2,font.lab=2);options(scipen=-2)
@@ -163,7 +164,7 @@ for(i in c(1:nrow(sigmut))) {
   
   maxexp <- ceiling(max(geneData$Expression));minexp <- floor(min(geneData$Expression))
   boxplot(Expression~Mut,data=geneData,
-          ylim=c(minexp,maxexp),las=1,cex.axis=1.125,frame=F,outline=F,xlab='',ylab='',axes=F,boxcol=c('gray85',datacol[3]),boxlwd=2,col='white',medcol=c('gray70',datacol[3]),medlwd=3,staplecol=c('gray70',datacol[3]),staplelwd=2,outcol=c('gray70',datacol[3]),outpch=20)
+          ylim=c(minexp,maxexp),las=1,cex.axis=1.125,frame=F,outline=F,xlab='',ylab='',axes=F,boxcol=c('gray85',datacol[2]),boxlwd=2,col='white',medcol=c('gray70',datacol[2]),medlwd=3,staplecol=c('gray70',datacol[2]),staplelwd=2,outcol=c('gray70',datacol[2]),outpch=20)
   stripchart(Expression~Mut,data=geneData,vertical=T,method="jitter",add=TRUE,pch=20,col=scales::alpha(c('gray70',datacol[3]),0.5),cex=1)
   axis(side=1,at=c(1,2),labels=c('WT',paste0('Mut - ',curmut$Type)),cex.axis=1.5);axis(side=2,cex.axis=1.25,las=1,line=0)
   mtext(side=3,line=c(1,0),cex=c(1,0.75),font=2,text=c(paste0(curmut$Gene,' (',mut,')'),paste0('eQTL effect size = ',signif(curmut$Mutes,3),' Clonality = ',curmut$ClonalityRNA)))
@@ -175,7 +176,7 @@ dev.off()
 ```
 
 ## Run and plot post-hoc power analysis for HW cohort
-### Figure S7J
+### Figure S18J
 ```{r HW_eqtl_power}
 # Select only loci which have at least 2 matched DNA-RNA HW samples mutated
 mutmut <- mutmut[which(mutmut$HW_RNArec>=2),]
@@ -194,8 +195,8 @@ for(i in c(1:nrow(mutmut))) {
 }
 mutmut$SamNeeded <- samneeded
 
-# Plot Figure S7J
-pdf('figures/figS7J.HW_eqtl_power_analysis.pdf')
+# Plot Figure S18J
+pdf('figures/figS18J.HW_eqtl_power_analysis.pdf')
 par(mar=c(4,4,1,1),font=2,font.axis=2,font.lab=2,cex.axis=1.25)
 plot(mutmut$SamNeeded[which(mutmut$hw_pval>=sigthresh | mutmut$SignCorrect!='Correct')],mutmut$HW_RNArec[which(mutmut$hw_pval>=sigthresh | mutmut$SignCorrect!='Correct')],axes=F,pch=16,xlab='',ylab='',
      col=scales::alpha('dimgray',0.5),ylim=c(0,15),xlim=c(0,20),cex=2)

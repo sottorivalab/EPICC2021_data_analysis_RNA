@@ -1,7 +1,7 @@
 ---
-title: "Run eQTL analysis"
+title: "Run eQTL analysis including MSI as a covariate"
 author: "Dr Jacob Househam"
-date: "23/06/2021"
+date: "19/05/2022"
 output: html_document
 ---
 
@@ -23,6 +23,7 @@ lmp <- function (modelobject) {
 ```{r load_sample_data}
 rnasam <- read.table('input_files/ListRNAPass.EPICC.txt')[,1]
 dnasam <- readRDS('input_files/dna_sample_data.rds')
+msipat <- c('C516','C518','C536','C548','C552')
 
 # Filter for patients which have at least two matched tumour RNA-DNA samples
 # And add in normal samples only for those patients
@@ -99,16 +100,17 @@ allPat <- allmut[matchloci,matchsam]
 # Convert to characters for linear regression
 for(i in c(1:ncol(allPat))) { allPat[,i] <- ifelse(allPat[,i]==0,'WT','Mut')}
 typetissue <- ifelse(gsub('C\\d+_(\\S)\\S+','\\1',colnames(allPat))=='E','Normal','Tumour')
+typeMSI <- ifelse(gsub('^(C\\d+)_\\S+','\\1',colnames(allPat)) %in% msipat,'MSI','MSS')
 purity <- c();for(i in c(1:length(matchsam))) {
   purity <- c(purity,ifelse(typetissue[i]=='Tumour',dnasam[which(dnasam$Sample==matchsam[i]),'Purity'],0))
 }
 
 # Save data matrices
-listmat <- list(expPat,allPat,segPat,purity,typetissue,allmut2gene)
-names(listmat) <- c('Expression','Mut','CNA','Purity','Tissue','Mut2Gene')
+listmat <- list(expPat,allPat,segPat,purity,typetissue,allmut2gene,typeMSI)
+names(listmat) <- c('Expression','Mut','CNA','Purity','Tissue','Mut2Gene','MSI')
 matchloci <- row.names(listmat$Mut)
 matchpat <- unique(gsub('(C\\d+)_\\S+','\\1',matchsam))
-saveRDS(listmat,'intermediates/eqtl_data_matrices.rds')
+saveRDS(listmat,'intermediates/eqtl_data_matrices.MSI.rds')
 
 # Load extra data needed to annotate eQTLs
 annomutmat <- readRDS('input_files/annotated_mutation_matrix.rds') # Available upon request - file >50MB
@@ -128,8 +130,8 @@ smallanno <- smallanno[which(rowSums(smallanno[,tumsam])>=2),];row.names(smallan
 ## Run eQTL analysis
 ```{r run_eqtl}
 # Prepare results dataframe
-newallDF <- data.frame(ID=allmut2gene$ID,Locus=allmut2gene$Locus,Type=allmut2gene$Type,Ensembl=filgenres[allmut2gene$Gene,'ensembl_gene_id'],Gene=filgenres[allmut2gene$Gene,"hgnc_symbol"],Entrez=filgenres[allmut2gene$Gene,"entrezgene"],Intervals='',CDS='',AA='',ModelP=0,ModelRsq=0,Mutes=0,MutP=0,CNAes=0,CNAP=0,Purityes=0,PurityP=0,Tissuees=0,TissueP=0,NumRNASam=0,NumRNAPat=0,MutRNASam='',MutRNAPat='',ClonalityRNA='',NumAllSam=0,NumAllPat=0,MutAllSam='',MutAllPat='',ClonalityAll='')
-for(pat in matchpat) { newallDF[[pat]] <- ''};vars <- c('CNA','Mut','Purity','Tissue')
+newallDF <- data.frame(ID=allmut2gene$ID,Locus=allmut2gene$Locus,Type=allmut2gene$Type,Ensembl=filgenres[allmut2gene$Gene,'ensembl_gene_id'],Gene=filgenres[allmut2gene$Gene,"hgnc_symbol"],Entrez=filgenres[allmut2gene$Gene,"entrezgene"],Intervals='',CDS='',AA='',ModelP=0,ModelRsq=0,Mutes=0,MutP=0,CNAes=0,CNAP=0,Purityes=0,PurityP=0,Tissuees=0,TissueP=0,MSIes=0,MSIP=0,NumRNASam=0,NumRNAPat=0,MutRNASam='',MutRNAPat='',ClonalityRNA='',NumAllSam=0,NumAllPat=0,MutAllSam='',MutAllPat='',ClonalityAll='')
+for(pat in matchpat) { newallDF[[pat]] <- ''};vars <- c('CNA','Mut','Purity','Tissue','MSI')
 
 # Run eQTL one mutation at a time
 for(i in c(1:nrow(newallDF))) {
@@ -138,7 +140,7 @@ for(i in c(1:nrow(newallDF))) {
   newtmpres <-smallanno[which(smallanno$Locus==locus),]
   
   # Prepare dataframe for linear regression
-  locusData <- data.frame(Expression=as.numeric(listmat$Expression[gene,]),Mut=listmat$Mut[locus,],CNA=listmat$CNA[gene,],Purity=listmat$Purity,Tissue=listmat$Tissue)
+  locusData <- data.frame(Expression=as.numeric(listmat$Expression[gene,]),Mut=listmat$Mut[locus,],CNA=listmat$CNA[gene,],Purity=listmat$Purity,Tissue=listmat$Tissue,MSI=typeMSI)
   locusData$Mut <- factor(locusData$Mut,levels=c('WT','Mut'))
   
   # Run linear regression
@@ -230,10 +232,10 @@ for(i in c(1:nrow(newallDF))) {
 # Get the adjusted p-values for the Model and the individual coefficients
 newallDF$ModeladjP <- p.adjust(newallDF$ModelP,method='fdr');newallDF$MutadjP <- p.adjust(newallDF$MutP,method='fdr')
 newallDF$CNAadjP <- p.adjust(newallDF$CNAP,method='fdr');newallDF$PurityadjP <- p.adjust(newallDF$PurityP,method='fdr')
-newallDF$TissueadjP <- p.adjust(newallDF$TissueP,method='fdr')
+newallDF$TissueadjP <- p.adjust(newallDF$TissueP,method='fdr');newallDF$MSIadjP <- p.adjust(newallDF$MSIP,method='fdr')
 
 # Save results data frame
-saveRDS(newallDF,file='results/eqtl_analysis_results.rds')
+saveRDS(newallDF,file='results/eqtl_analysis_results.MSI.rds')
 ```
 
 

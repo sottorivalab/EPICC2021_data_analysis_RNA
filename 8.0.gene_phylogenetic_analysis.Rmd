@@ -13,9 +13,7 @@ library(phytools);library(DESeq2);library(org.Hs.eg.db);library(phangorn);librar
 ngroupcol= c(wes_palette("Darjeeling2",5)[2],wes_palette('Darjeeling1',5)[2],wes_palette('FantasticFox1',5)[5])
 names(ngroupcol) <- as.numeric(c(1:3))
 col_list <- list(Group=ngroupcol)
-string_db <- STRINGdb$new(version="11",species=9606,score_threshold=200,
-                          input_directory="~/Documents/EPICC/PurityAdjust/stringdb_dir/")
-                          #input_directory="<path_to_downloaded_string_db_database>")
+string_db <- STRINGdb$new(version="11",species=9606,score_threshold=200, input_directory="~/Documents/EPICC/PurityAdjust/stringdb_dir/") #input_directory="<path_to_downloaded_string_db_database>")
 ```
 
 ## Load tree and expression data
@@ -185,10 +183,10 @@ write.table(str_split(enrich[which(enrich$description=='PPAR signaling pathway')
 ```
 
 ## Plot the (non-)correlation of sample number x number of sig phylo gene
-### Figure S4
+### Figure S6
 ```{r plot_correlation}
 res <- lm(colSums(recstars!='')~tinfo$numsam);sumres <- summary(res)
-pdf('figures/figS4.correlation_plot_number_samples_vs_sig_phylo_genes.pdf')
+pdf('figures/figS6.correlation_plot_number_samples_vs_sig_phylo_genes.pdf')
 par(mar=c(4,4,1,1),font=2,font.axis=2,font.lab=2)
 plot(tinfo$numsam,colSums(recstars!=''),bty='n',pch=16,cex=2,col='skyblue3',
      xlab='',ylab='',axes=F,xlim=c(0,35),ylim=c(0,2500))

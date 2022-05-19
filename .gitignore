@@ -6,3 +6,6 @@ EPICC_transcriptome.Rproj
 results
 intermediates
 figures
+input_files/epi_raw_counts02.normaladult.sct.rds
+input_files/compiled_germline_snps.rds
+input_files/annotated_mutation_matrix.rds

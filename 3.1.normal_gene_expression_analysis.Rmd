@@ -1,0 +1,121 @@
+---
+title: "Analysis of normal colon scRNA-seq data"
+author: "Dr Jacob Househam"
+date: "21/06/2021"
+output: html_document
+---
+```{r library, message=FALSE, warning=FALSE, include=FALSE}
+library(SeuratDisk);library(Seurat);library(SeuratObject);library(vioplot)
+library(wesanderson);library(clusterProfiler);library(sctransform);library(matrixStats)
+'%ni%' <- Negate('%in%');options(datatable.fread.datatable=FALSE)
+```
+
+## Define colour palettes
+```{r setup}
+ngroupcol = c(wes_palette("Darjeeling2",5)[2],wes_palette('Darjeeling1',5)[2],wes_palette('FantasticFox1',5)[c(5,2)])
+names(ngroupcol) <- as.numeric(c(1:4))
+```
+
+## Load in data
+```{r loading}
+# Load gene and group information
+protexp <- readRDS('intermediates/All_EPICC_tpm.rds')
+usesymdf <- bitr(protexp$GeneID,fromType = 'ENSEMBL',toType = 'SYMBOL',OrgDb="org.Hs.eg.db")
+usesym <- unique(usesymdf$SYMBOL)
+geneinfo <- readRDS('~/Documents/EPICC/EPICC_RNA_Analysis/EPICC_transcriptome/results/gene_clustering_and_id_conversion.rds')
+geneinfo <- geneinfo[which(geneinfo$hgnc_symbol %in% usesym),];row.names(geneinfo) <- c(1:nrow(geneinfo))
+
+# Load scRNA-seq data - 
+normadult <- readRDS('input_files/epi_raw_counts02.normaladult.sct.rds') # is ~1.3GB, downloaded from https://www.gutcellatlas.org
+scgenes <- rownames(normadult@assays$RNA);scgenes <- scgenes[which(scgenes %in% usesym)]
+geneinfo <- geneinfo[which(geneinfo$hgnc_symbol %in% scgenes),];row.names(geneinfo) <- c(1:nrow(geneinfo))
+filgen <- geneinfo$hgnc_symbol;nonfilgen <- scgenes[which(scgenes %ni% geneinfo$hgnc_symbol)]
+
+metadf <- normadult@meta.data
+newfilmet <- metadf[which(metadf$Diagnosis=='Healthy adult' & metadf$Region=='LargeInt'),];row.names(newfilmet) <- c(1:nrow(newfilmet))
+```
+
+
+## Compare expression of filtered genes with non-filtered genes (in all cell types)
+```{r get_exp_of_fil}
+# Select the 7 sample names that don't have 0 number of large intestine adult cells
+pats <- head(names(table(newfilmet$Sample.name)),n=7)
+
+listmean <- listsd <- list()
+patcells <- c()
+# For each patient
+for(pat in pats) {
+  print(paste0('Subsetting for ',pat))
+  # Subset for patient
+  pattmp <- subset(normadult,subset = Sample.name == pat)
+  
+  print(paste0('Extracting expression matrix ',pat))
+  # Extract expression matrix
+  tmpmat <- as.matrix((GetAssayData(object = pattmp, slot = "data",assay = "RNA")))
+  tmpmat <- tmpmat[scgenes,]
+  patcells <- c(patcells,ncol(tmpmat))
+  
+  print(paste0('Calculating mean expression and standard deviation ',pat))
+  # Get mean and sd for each gene
+  curmeans <- apply(tmpmat,1,mean);cursds <-  apply(tmpmat,1,sd)
+  listmean[[pat]] <- curmeans;listsd[[pat]] <- cursds/curmeans
+}
+dfmean <- as.data.frame(listmean);dfsd <- as.data.frame(listsd)
+```
+
+## Plot expression of filtered genes in single cells - Figure S1
+```{r plot_exp_fil}
+pdf('figures/figS1.singlecellexpVSfilteredgenelist.pdf',width=8)
+par(font=2,font.axis=2,font.lab=2,mar=c(5,5,0.5,0.5))
+vioplot(rowMeans(dfmean[which(row.names(dfmean) %in% nonfilgen),]),
+       rowMeans(dfmean[which(row.names(dfmean) %in% filgen),]),
+       frame.plot = F,col=c('gray30','gray60'),las=1,
+       names=c('Genes not in filtered list','Genes in filtered list'),font.axis=2,cex.axis=1.5)
+mtext(side=2,line=3,'Mean mean expression',cex=1.5)
+mtext(side=1,line=2.2,cex=1.25,at=c(1,2),text=paste0('n = ',c(length(nonfilgen),length(filgen))))
+dev.off()
+```
+
+## Plot mean and sd (equivalent to Fig 1B&C) - Figure S2
+```{r plot_mean_sd_normscRNAseq}
+listmean <- listsd <- list()
+patcells <- c()
+# For each patient
+for(pat in pats) {
+    print(paste0('Processing ',pat))
+    # Subset for patient
+    pattmp <- subset(normadult,subset = Sample.name == pat)
+    
+    # Extract expression matrix
+    tmpmat <- as.matrix((GetAssayData(object = pattmp, slot = "data", assay = "RNA")))
+    patcells <- c(patcells,ncol(tmpmat))
+    
+    # Get mean and sd for each gene
+    curmeans <- apply(tmpmat,1,mean);cursds <-  apply(tmpmat,1,sd)
+    listmean[[pat]] <- curmeans;listsd[[pat]] <- cursds
+}
+  
+dfmean <- as.data.frame(listmean);dfsd <- as.data.frame(listsd)
+tmpdf <- data.frame(Symbol=names(curmeans),Mean=rowMeans(dfmean),Var=rowMeans(dfsd))
+genedf <- merge(geneinfo,tmpdf,by.x='hgnc_symbol',by.y='Symbol')
+
+pdf('figures/figS2.gene_group_mean_sd.normsinglecell.pdf',height=4, width=4)
+par(font=2,font.axis=2,font.lab=2,mar=c(5,4.5,3,1))
+boxplot(Mean~Group,data=genedf,col=scales::alpha(ngroupcol,0.5),frame=F,
+        xlab='',ylab='',boxcol=ngroupcol,boxlwd=1.5,medcol=ngroupcol,medlwd=2.5,
+        staplecol=ngroupcol,staplelwd=1.5,whiskcol=ngroupcol,whisklwd=1.5,cex.axis=1.25,
+        outpch=16,outcex=0.5,outcol=scales::alpha(ngroupcol,0.5),las=1)
+mtext(side=1,text='Group',line=3);mtext(side=2,text='Mean Mean Expression',line=3)
+mtext(side=3,text=paste0(sum(patcells),' total cells'))
+mtext(side=1,at=c(1:4),text=paste0('n=',as.numeric(table(genedf$Group))),line=2,cex=0.7)
+boxplot(Var~Group,data=genedf,col=scales::alpha(ngroupcol,0.5),frame=F,
+        xlab='',ylab='',boxcol=ngroupcol,boxlwd=1.5,medcol=ngroupcol,medlwd=2.5,
+        staplecol=ngroupcol,staplelwd=1.5,whiskcol=ngroupcol,whisklwd=1.5,cex.axis=1.25,
+        outpch=16,outcex=0.5,outcol=scales::alpha(ngroupcol,0.5),las=1)
+mtext(side=1,text='Group',line=3.5);mtext(side=2,text='Mean Standard Deviation',line=3)
+mtext(side=1,at=c(1:4),text=paste0('n=',as.numeric(table(genedf$Group))),line=2,cex=0.7)
+mtext(side=3,text=paste0('Mean cells per patient = ',floor(mean(patcells))))
+dev.off()
+```
+
+

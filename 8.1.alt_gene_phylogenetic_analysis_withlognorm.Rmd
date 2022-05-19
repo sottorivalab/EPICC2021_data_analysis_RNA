@@ -1,0 +1,120 @@
+---
+title: "Run and plot gene expression phylogenetic signal analysis - using log-normalisation (as opposed to vst)"
+author: "Dr Jacob Househam"
+date: "21/06/2021"
+output: html_document
+---
+
+```{r library, message=FALSE, warning=FALSE, include=FALSE}
+library(phytools);library(DESeq2);library(wesanderson);library(pheatmap);library(RColorBrewer)
+```
+
+## Load tree and expression data
+```{r load_tree_and_expression}
+# 1) Load tree info
+treelist <- readRDS('intermediates/pgls.trees.rds')
+tinfo <- readRDS('intermediates/pgls.infotrees.rds')
+
+# 2) Load DESeq2 dds object and
+dds <- readRDS('intermediates/allgenes.dds.ensembl.rds')
+geneexp <- as.data.frame(assay(normTransform(dds))[,tinfo$samples])
+
+# 3) Input expression filtering from other script
+genedf <- readRDS('results/gene_clustering_and_id_conversion.rds')
+```
+
+## For each tumour get the phylogenetic signal (lambda) for all genes for the 100 trees of varying branch length
+### Takes a long time - should be run on an HPC
+```{r get_phylogenetic_signal}
+gene_lambda_list <- list()
+for(pat in tinfo$patients) {
+  trimtree <- treelist[[pat]][[1]]
+  treesam <- paste0(pat,"_",trimtree$tip.label)
+  print(paste0(pat,': ',length(treesam),' matched samples x ',nrow(genedf),' genes'))
+  
+  try <- as.data.frame(t(geneexp[row.names(genedf),treesam]))
+  row.names(try) <- gsub('C\\d+_(\\S+)','\\1',row.names(try))
+  
+  siglist <- list()
+  for(i in c(1:length(treelist[[pat]]))) {
+    trimtree <- treelist[[pat]][[as.character(i)]]
+    
+    sigphylo <- data.frame(Gene=colnames(try),Lambda=0,Lpval=0,Kstat=0,Kpval=0)
+    for(j in c(1:ncol(try))) {
+      curgen <- try[,j];names(curgen) <- row.names(try)
+      if(var(curgen)>0) {
+        res <- phylosig(trimtree,curgen,method='lambda',test=T)
+        sigphylo[j,'Lambda'] <- res$lambda;sigphylo[j,'Lpval'] <- res$P
+      } else {
+        res <- phylosig(trimtree,curgen,method='lambda',test=F)
+        sigphylo[j,'Lambda'] <- res$lambda;sigphylo[j,'Lpval'] <- 1
+      }
+    }
+    siglist[[as.character(i)]] <- sigphylo
+    print(paste0(pat,': ',signif((i/length(treelist[[pat]])*100),2),'%'))
+  }
+  
+  lam <- do.call(cbind, lapply(siglist,function(x) { x$Lambda }))
+  lam_pval <- do.call(cbind, lapply(siglist,function(x) { x$Lpval }))
+  resdf <- data.frame(MedLambda=rowMedians(lam),
+                    LamPval=rowMedians(lam_pval))
+  row.names(resdf) <- colnames(try)
+  
+  gene_lambda_list[[pat]] <- resdf
+}
+# To compile ad-hoc on HPC
+patients <- c("C538","C542","C544","C551","C552","C554","C559","C560")
+lamlist <- list()
+for(pat in patients) {
+  curlam <- readRDS(paste0(pat,'_lambda_data.rds'))
+  lamlist[[pat]] <- curlam
+}
+saveRDS(lamlist,file='results/gene_lambda_data.normcounts.rds')
+```
+
+## Load in log-norm results and compare to original vst results
+```{r compare_lognorm_and_vst}
+# Load in log-norm results
+gene_lambda_list <- readRDS('results/gene_lambda_data.normcounts.rds')
+
+# Load in original results, filtering for gene groups 1-03
+oriphyres <- readRDS('results/gene_lambda_data.rds')
+oriphyres <- lapply(oriphyres,function(x) { x[which(row.names(x) %in% genedf[which(genedf$Group!='4'),'ensembl_gene_id']),] })
+
+compdf <- data.frame(Shared=rep(0,length(gene_lambda_list)),VST=rep(0,length(gene_lambda_list)),LogNormal=rep(0,length(gene_lambda_list)),None=rep(0,length(gene_lambda_list)))
+row.names(compdf) <- names(gene_lambda_list)
+
+for(pat in names(oriphyres)) {
+  curori <- oriphyres[[pat]]
+  curnew <- gene_lambda_list[[pat]]
+  
+  compdf[pat,] <- c(length(which(curori$LamPval<0.05 & curnew$LamPval<0.05)),
+                    length(which(curori$LamPval<0.05 & curnew$LamPval>=0.05)),
+                    length(which(curori$LamPval>=0.05 & curnew$LamPval<0.05)),
+                    length(which(curori$LamPval>=0.05 & curnew$LamPval>=0.05)))
+}
+compperdf <- compdf[,c(1:3)]
+for(pat in names(oriphyres)) { compperdf[pat,] <- compperdf[pat,]/sum(compdf[pat,c(1:3)])}
+
+orisignum <- sapply(oriphyres,function(x) { length(which(x$LamPval<0.05)) })
+newsignum <- sapply(gene_lambda_list,function(x) { length(which(x$LamPval<0.05)) })
+```
+
+## Plot comparison of phylo from vst/lognorm
+### Figure S7A&B
+```{r plot_phylo_vst_lognorm_comparison}
+pdf('figures/figS7A.phylo_vst_vs_lognorm.perc.pdf')
+par(mar=c(5,6,1.5,0),font=2,font.axis=2,font.lab=2,cex.axis=1.5)
+newdf <- data.frame(VST=orisignum/nrow(genedf)*100,LogNorm=newsignum/nrow(genedf)*100)
+barplot(t(newdf),beside = T,ylim=c(0,50),las=2,col=brewer.pal(3,'Paired')[c(1,3)],border=NA)
+mtext(side=2,text='% of genes with significant phylogenetic signal',line=3.5,cex=1.5)
+legend(8,45,legend=c('LogNorm','VST'),fill=rev(brewer.pal(3,'Paired')[c(1,3)]),xpd=T,cex=1.5,bty='n',border=NA)
+dev.off()
+
+pdf('figures/figS7B.phylo_vst_vs_lognorm.shared.pdf',width=8)
+par(mar=c(5,6,1.5,8.5),font=2,font.axis=2,font.lab=2,cex.axis=1.5)
+barplot(t(compperdf*100),las=2,col=brewer.pal(3,'Paired')[c(2,1,3)],border=NA)
+mtext(side=2,text='% of genes with significant phylogenetic signal',line=3.5,cex=1.5)
+legend(9.5,100,legend=rev(c('Shared','VST-only','LogNorm-only')),fill=rev(brewer.pal(3,'Paired')[c(2,1,3)]),xpd=T,cex=1.2,bty='n',border=NA)
+dev.off()
+```

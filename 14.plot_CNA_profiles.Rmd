@@ -1,7 +1,7 @@
 ---
-title: "Plot CNA Profiles (Figure S9)"
+title: "Plot CNA Profiles (Figure S25)"
 author: "Dr Jacob Househam"
-date: "16/08/2021"
+date: "18/05/2022"
 output: html_document
 ---
 
@@ -119,9 +119,9 @@ regs <- gsub('C\\d+_(\\S).+','\\1',sortsam);depth <- ifelse(sortsam %in% deepsam
 ```
 
 ## Plot CNA segments with genome on x-axis and samples on y-axis
-### Figure S9
+### Figure S25
 ```{r plot_cnas}
-pdf('figures/figS9.wgs_and_lowpass_bytype.pdf',width=15,height=20)
+pdf('figures/figS25.wgs_and_lowpass_bytype.pdf',width=15,height=20)
 
 # topy defines the highest point on plot - adjust according to number of samples/patients
 topy <- 553.4

@@ -1,0 +1,233 @@
+---
+title: "Run and plot gene expression phylogenetic signal analysis"
+author: "Dr Jacob Househam"
+date: "18/05/2022"
+output: html_document
+---
+
+```{r library, message=FALSE, warning=FALSE, include=FALSE}
+library(phytools);library(DESeq2);library(org.Hs.eg.db);library(phangorn);library(wesanderson);library(pheatmap);library(STRINGdb);library(metap);library(clusterProfiler);library(stringr)
+```
+
+```{r setup}
+ngroupcol= c(wes_palette("Darjeeling2",5)[2],wes_palette('Darjeeling1',5)[2],wes_palette('FantasticFox1',5)[5])
+names(ngroupcol) <- as.numeric(c(1:3))
+col_list <- list(Group=ngroupcol)
+string_db <- STRINGdb$new(version="11",species=9606,score_threshold=200, input_directory="~/Documents/EPICC/PurityAdjust/stringdb_dir/") #input_directory="<path_to_downloaded_string_db_database>")
+```
+
+## Load tree and expression data
+```{r load_tree_and_expression}
+# 1) Load tree info
+treelist <- readRDS('intermediates/pgls.trees.rds')
+tinfo <- readRDS('intermediates/pgls.infotrees.rds')
+
+# 2) Load DESeq2 normalised gene expression
+vsd <- readRDS('intermediates/allgenes.vsd.ensembl.rds')
+geneexp <- as.data.frame(assay(vsd))[,tinfo$samples]
+
+# 3) Input expression filtering from other script
+genedf <- readRDS('results/gene_clustering_and_id_conversion.rds')
+
+purres <- readRDS('intermediates/expression_purity_regression.rds')
+purresfil <- purres[which(purres$Gene %in% row.names(genedf)),];row.names(purresfil) <- c(1:nrow(purresfil))
+# Load DNA purity
+dnapur <- readRDS('input_files/dna_sample_data.rds')
+```
+
+## For each tumour get the phylogenetic signal (lambda) for all genes for the 100 trees of varying branch length
+### Takes a long time - should be run on an HPC
+```{r get_phylogenetic_signal}
+gene_lambda_list <- list()
+for(pat in tinfo$patients) {
+  trimtree <- treelist[[pat]][[1]]
+  treesam <- paste0(pat,"_",trimtree$tip.label)
+  print(paste0(pat,': ',length(treesam),' matched samples x ',nrow(genedf),' genes'))
+  
+  try <- as.data.frame(t(geneexp[row.names(genedf),treesam]))
+  row.names(try) <- gsub('C\\d+_(\\S+)','\\1',row.names(try))
+  
+  patdnapur <- dnapur[which(dnapur$Sample %in% paste0(pat,'_',row.names(try))),]
+  
+  siglist <- list()
+  for(i in c(1:length(treelist[[pat]]))) {
+    trimtree <- treelist[[pat]][[as.character(i)]]
+    
+    sigphylo <- data.frame(Gene=colnames(try),Lambda=0,Lpval=0,Kstat=0,Kpval=0)
+    for(j in c(1:ncol(try))) {
+      curgen <- try[,j];names(curgen) <- row.names(try)
+      curgen <- curgen + (purresfil[j,"PurCoef"]/patdnapur$Purity)
+      
+      if(var(curgen)>0) {
+        res <- phylosig(trimtree,curgen,method='lambda',test=T)
+        sigphylo[j,'Lambda'] <- res$lambda;sigphylo[j,'Lpval'] <- res$P
+      } else {
+        res <- phylosig(trimtree,curgen,method='lambda',test=F)
+        sigphylo[j,'Lambda'] <- res$lambda;sigphylo[j,'Lpval'] <- 1
+      }
+    }
+    siglist[[as.character(i)]] <- sigphylo
+    print(paste0(pat,': ',signif((i/length(treelist[[pat]])*100),2),'%'))
+  }
+  
+  lam <- do.call(cbind, lapply(siglist,function(x) { x$Lambda }))
+  lam_pval <- do.call(cbind, lapply(siglist,function(x) { x$Lpval }))
+  resdf <- data.frame(MedLambda=rowMedians(lam),
+                    LamPval=rowMedians(lam_pval))
+  row.names(resdf) <- colnames(try)
+  
+  gene_lambda_list[[pat]] <- resdf
+}
+saveRDS(gene_lambda_list,file='results/gene_lambda_data.puritycorrected.rds')
+```
+
+## Analyse and plot the results of the phylogenetic gene expression analysis
+### Figure S8A&B)
+```{r plot_phylogenetic_gene_results}
+genedf <- genedf[which(genedf$Group!='4'),]
+reclam <- matrix(0L,nrow=nrow(genedf),ncol=length(tinfo$patients))
+colnames(reclam) <- tinfo$patients;row.names(reclam) <- row.names(genedf)
+recstars <- recpval <- recadjstar <- reclam
+pdf('figures/figS8AB.lambda_analysis_genes.purity.pdf',height=8,width=5)
+for(pat in tinfo$patients) {
+  resdf <- gene_lambda_list[[pat]]
+  resdf <- resdf[row.names(genedf),]
+  
+  combdf <- merge(resdf,genedf,by=0);row.names(combdf) <- combdf$Row.names
+  combdf$MedPval <- -log10(combdf$LamPval)
+  reclam[row.names(combdf),pat] <- combdf$MedLambda
+  recstars[row.names(combdf),pat] <- getstars_vec(combdf$LamPval)
+  recpval[row.names(combdf),pat] <- combdf$MedPval
+  recadjstar[row.names(combdf),pat] <- getstars_vec(p.adjust(combdf$LamPval,method='fdr'))
+  
+  trimtree <- treelist[[pat]][[1]]
+  treesam <- paste0(pat,'_',trimtree$tip.label)
+  try <- as.data.frame(t(geneexp[row.names(resdf),treesam]))
+  row.names(try) <- gsub('C\\d+_(\\S+)','\\1',row.names(try))
+  
+  seldf <- combdf[which(combdf$LamPval<0.05),]
+  
+  regions <- gsub('^(\\S)\\d+_\\S+','\\1',trimtree$tip.label)
+  options(scipen = -1);par(mar=c(0,0,2,0),xpd=T)
+  plot.phylo(trimtree,type="phylogram",align.tip.label = T,edge.width=3,
+             font=2,cex=0.9,tip.color=regcol[c(regions,'Root')],label.offset=20)
+  title(main=pat)
+  
+  if(nrow(seldf)>1) {
+    seldf <- seldf[seldf$hgnc_symbol!='',]
+    explot <- try[,row.names(seldf)];colnames(explot) <- seldf$hgnc_symbol
+    genvar <- apply(explot,2,function(x) { var(x) })
+    explot <- scale_mat(explot[,which(genvar!=0)],'column')
+    d = dist(t(explot),method='euclidean');clustord <- hclust(d,method='complete')
+    explot <- explot[c(nrow(explot):1),clustord$order]
+    
+    newcolannot <- seldf;row.names(newcolannot) <- newcolannot$hgnc_symbol
+    mybreaks <- seq(floor(min(explot)),ceiling(max(explot)),by=0.05)
+    pheatmap(explot,show_rownames = F,show_colnames=F,cluster_rows=F,cluster_cols=F,treeheight_col=0,
+             border_color=NA,fontsize = 6,fontsize_col = 4,
+             color=wes_palette("Zissou1", length(mybreaks)-1, type = "continuous"),breaks=mybreaks,
+             annotation_col=newcolannot[,c('MedLambda','MedPval','Group')],
+             annotation_colors=col_list)
+  }
+}
+dev.off()
+
+recsave <- genedf;recsave$NumRec <- rowSums(recstars!='')
+saveRDS(recsave,file='results/reccurent_phylogenetic_genes.puritycorrected.rds')
+```
+
+## Plot recurrent phylogenetic genes
+### Figure S8C
+```{r plot_rec_phylo}
+geneanot <- recsave[which(rowSums(recstars!='')>=3),];geneanot <- geneanot[order(geneanot$NumRec,decreasing=T),]
+filrecstars <- recstars[row.names(geneanot),];row.names(filrecstars) <- geneanot$hgnc_symbol
+filrecpval <- recpval[row.names(geneanot),];row.names(filrecpval) <- geneanot$hgnc_symbol
+row.names(geneanot) <- geneanot$hgnc_symbol
+geneanot <- geneanot[,c("Mean_Mean_Exp","Group","NumRec")]
+
+pdf('figures/figS8C.recurrent_genes_lambda.purity.pdf',height=13,width=8.5)
+mybreaks <- seq(0,ceiling(max(filrecpval)),by=0.01)
+pheatmap(filrecpval,show_rownames=T,show_colnames=T,cluster_rows=F,cluster_cols=T,
+         border_color=NA,fontsize=15,fontsize_col=20,fontsize_row=11,
+         color=wes_palette("Zissou1", length(mybreaks)-1, type = "continuous"),breaks=mybreaks,
+         display_numbers=filrecstars,fontsize_number=15,
+         annotation_row=geneanot,
+         annotation_colors=col_list)
+dev.off()
+```
+
+## Plot chi-squared test of phylo vs. gene groups
+### Figure S8D
+```{r plot_chisquared_test}
+recsave$Sig <- ifelse(recsave$NumRec>=1,'Sig','NotSig')
+pdf('figures/figS8D.gene_phylo_chiplot.purity.pdf')
+par(mar=c(4.5,4.5,2,2),font=2,font.axis=2,font.lab=2,cex.axis=2)
+
+mat <- matrix(0L,nrow=3,ncol=2,dimnames=list(c('3','2','1'),c('Sig','NotSig')))
+probmat <- mat
+for(cat in as.character(c(1:3))) {
+  mat[cat,'NotSig'] <- length(which(recsave$Group==cat & recsave$Sig=='NotSig'))
+  mat[cat,'Sig'] <- length(which(recsave$Group==cat & recsave$Sig=='Sig'))
+  
+  probmat[cat,] <- mat[cat,]/sum(mat[cat,])*100
+}
+res <- chisq.test(mat)  
+
+xx <- barplot(t(probmat),beside=T,xlim=c(0,100),border=c(ngroupcol[3],ngroupcol[3],ngroupcol[2],ngroupcol[2],ngroupcol[1],ngroupcol[1]),axes=F,horiz=T,las=2,density=c(NA,20,NA,20,NA,20),
+              col=c(ngroupcol[3],ngroupcol[3],ngroupcol[2],ngroupcol[2],ngroupcol[1],ngroupcol[1]))
+axis(side=1,cex.axis=1.75,line=0);mtext(side=2,text='Group',line=2.75,cex=1.6)
+mtext(side=1,text='Percentage of genes',line=2.75,cex=1.6)
+mtext(side=3,text=paste0('chisq test: X^2=',signif(res$statistic,3),' df=',res$parameter,', p-value=',signif(res$p.value,3)),line=0.5,cex=1.2)
+legend(x=70,y=3.5,xpd=T,cex=1.5,legend=c('NonPhylo','Phylo'),bty='n',fill='gray60',density=c(20,NA),border=c('gray60'))
+dev.off()
+```
+
+## Load in purity-corrected results and compare to original vst results
+```{r compare_purity_vs_original}
+# Load in log-norm results
+gene_lambda_list <- readRDS('results/gene_lambda_data.puritycorrected.rds')
+gene_lambda_list <- lapply(gene_lambda_list,function(x) { x[which(row.names(x) %in% genedf[which(genedf$Group!='4'),'ensembl_gene_id']),] })
+
+# Load in original results, filtering for gene groups 1-03
+oriphyres <- readRDS('results/gene_lambda_data.rds')
+oriphyres <- lapply(oriphyres,function(x) { x[which(row.names(x) %in% genedf[which(genedf$Group!='4'),'ensembl_gene_id']),] })
+
+compdf <- data.frame(Shared=rep(0,length(gene_lambda_list)),VST=rep(0,length(gene_lambda_list)),LogNormal=rep(0,length(gene_lambda_list)),None=rep(0,length(gene_lambda_list)))
+row.names(compdf) <- names(gene_lambda_list)
+
+for(pat in names(oriphyres)) {
+  curori <- oriphyres[[pat]]
+  curnew <- gene_lambda_list[[pat]]
+  
+  compdf[pat,] <- c(length(which(curori$LamPval<0.05 & curnew$LamPval<0.05)),
+                    length(which(curori$LamPval<0.05 & curnew$LamPval>=0.05)),
+                    length(which(curori$LamPval>=0.05 & curnew$LamPval<0.05)),
+                    length(which(curori$LamPval>=0.05 & curnew$LamPval>=0.05)))
+}
+compperdf <- compdf[,c(1:3)]
+for(pat in names(oriphyres)) { compperdf[pat,] <- compperdf[pat,]/sum(compdf[pat,c(1:3)])}
+
+orisignum <- sapply(oriphyres,function(x) { length(which(x$LamPval<0.05)) })
+newsignum <- sapply(gene_lambda_list,function(x) { length(which(x$LamPval<0.05)) })
+```
+
+## Plot comparison of phylo from vst/lognorm
+### Figure S8E&F
+```{r plot_phylo_vst_lognorm_comparison}
+pdf('figures/figS8E.phylo_vst_vs_lognorm.perc.pdf')
+par(mar=c(5,6,1.5,0),font=2,font.axis=2,font.lab=2,cex.axis=1.5)
+newdf <- data.frame(VST=orisignum/nrow(genedf)*100,LogNorm=newsignum/nrow(genedf)*100)
+barplot(t(newdf),beside = T,ylim=c(0,30),las=2,col=brewer.pal(3,'Paired')[c(1,3)],border=NA)
+mtext(side=2,text='% of genes with significant phylogenetic signal',line=3.5,cex=1.5)
+legend(6,30,legend=c('Purity','Original'),fill=rev(brewer.pal(3,'Paired')[c(1,3)]),xpd=T,cex=2,bty='n',border=NA)
+dev.off()
+
+pdf('figures/figS8F.phylo_vst_vs_lognorm.shared.pdf',width=8)
+par(mar=c(5,6,1.5,8.5),font=2,font.axis=2,font.lab=2,cex.axis=1.5)
+barplot(t(compperdf*100),las=2,col=brewer.pal(3,'Paired')[c(2,1,3)],border=NA)
+mtext(side=2,text='% of genes with significant phylogenetic signal',line=3.5,cex=1.5)
+legend(9.5,100,legend=rev(c('Shared','Original-only','Purity-only')),fill=rev(brewer.pal(3,'Paired')[c(2,1,3)]),xpd=T,cex=1.2,bty='n',border=NA)
+dev.off()
+```
+
+
