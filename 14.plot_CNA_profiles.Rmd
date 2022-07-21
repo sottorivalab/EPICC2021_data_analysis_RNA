@@ -1,12 +1,12 @@
 ---
-title: "Plot CNA Profiles (Figure S25)"
+title: "Plot CNA Profiles (EPIGENOME Figure S3)"
 author: "Dr Jacob Househam"
 date: "18/05/2022"
 output: html_document
 ---
 
 ```{r library, message=FALSE, warning=FALSE, include=FALSE}
-library(data.table);options(datatable.fread.datatable=FALSE);'%ni%' <- Negate('%in%')
+library(data.table);library(stringr);options(datatable.fread.datatable=FALSE);'%ni%' <- Negate('%in%')
 ```
 
 
@@ -119,9 +119,9 @@ regs <- gsub('C\\d+_(\\S).+','\\1',sortsam);depth <- ifelse(sortsam %in% deepsam
 ```
 
 ## Plot CNA segments with genome on x-axis and samples on y-axis
-### Figure S25
+### EPIGENOME Figure S3
 ```{r plot_cnas}
-pdf('figures/figS25.wgs_and_lowpass_bytype.pdf',width=15,height=20)
+pdf('figures/EPIGENOMEfigS3.wgs_and_lowpass_bytype.pdf',width=15,height=20)
 
 # topy defines the highest point on plot - adjust according to number of samples/patients
 topy <- 553.4

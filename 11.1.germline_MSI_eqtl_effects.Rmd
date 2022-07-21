@@ -30,7 +30,7 @@ filgenres <- filgenres[which(filgenres$Group!='4'),]
 msipat <- c('C516','C518','C536','C548','C552')
 ```
 
-## Run PCA on germline SNPs matrix - Figure S20
+## Run PCA on germline SNPs matrix - Figure S16
 ```{r run_plot_germline_pca}
 # Load germline SNPs binary matrix - compiled from germline SNP VCF files
 snpmat <- readRDS('input_files/compiled_germline_snps.rds') # Available upon request - file >50MB
@@ -47,12 +47,12 @@ summary(res)
 
 p <- ggbiplot(res,labels = pats,var.axes = F,groups=patdf$MSI,ellipse=F,labels.size = 4)
 
-pdf('figures/figS20.germline_PCA.MSI.pdf')
+pdf('figures/figS16.germline_PCA.MSI.pdf')
 print(p)
 dev.off()
 
 q <- p + xlim(0.2,0.5) + ylim(-0.1,0.3)
-pdf('figures/figS20.germline_PCA.MSI.ZOOM.pdf')
+pdf('figures/figS16.germline_PCA.MSI.ZOOM.pdf')
 print(q)
 dev.off()
 ```
@@ -346,7 +346,7 @@ newallDF$TissueadjP <- p.adjust(newallDF$TissueP,method='fdr')
 saveRDS(newallDF,file='results/eqtl_analysis_results.justMSI.rds')
 ```
 
-## Compare results of MSS-only and MSI-only eQTL analyses - Figure S21
+## Compare results of MSS-only and MSI-only eQTL analyses - Figure S17
 ```{r compare_MSS_MSI_eQTLs}
 mssres <- readRDS('results/eqtl_analysis_results.justMSS.rds')
 mssfil <- mssres[which(mssres$ModeladjP<0.01 & mssres$MutadjP<0.01),];row.names(mssfil) <- c(1:nrow(mssfil))
@@ -358,7 +358,7 @@ msifil <- msires[which(msires$ModeladjP<0.01 & msires$MutadjP<0.01),];row.names(
 msipowres <- msires[which(abs(msires$Mutes)>1.5),];row.names(msipowres) <- c(1:nrow(msipowres))
 msipowfil <- msipowres[which(msipowres$ModeladjP<0.01 & msipowres$MutadjP<0.01),];row.names(msipowfil) <- c(1:nrow(msipowfil))
 
-pdf('figures/figS21.qqplot_mss_vs_msi.pdf')
+pdf('figures/figS17.qqplot_mss_vs_msi.pdf')
 par(mar=c(4.5,4.5,1,1),font.axis=2,font.lab=2,cex.axis=1.5,font=2)
 qqplot(abs(msspowfil$Mutes),abs(msipowfil$Mutes),cex=1.2,xlim=c(1,6),ylim=c(1,6),pch=16,col='firebrick4',bty='n',axes=F,xlab='',ylab='')
 abline(a=0,b=1,col=scales::alpha('dimgray',0.75),lty=2,lwd=3)

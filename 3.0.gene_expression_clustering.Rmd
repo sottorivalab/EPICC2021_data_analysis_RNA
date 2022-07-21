@@ -34,9 +34,6 @@ vsd <- readRDS('intermediates/allgenes.vsd.ensembl.rds')
 filpurens <- readRDS(file='intermediates/filteredgenes.5perAL10TPM.pospur.rds')
 geneexp <- as.data.frame(assay(vsd))[filpurens,tsam]
 allexp <- rowMeans(geneexp);allsd <- rowSds(as.matrix(geneexp))
-#for(i in c(1:ncol(geneexp))) {
-#  geneexp[,i] <- (geneexp[,i]-allexp)/allsd
-#}
 geneexp_norm <- as.data.frame(assay(vsd))[filpurens,normsam]
 ```
 
@@ -50,7 +47,7 @@ sdmat <- expmat
 for(pat in patients) {
   patsam <- tsam[grep(pat,tsam)];patexp <- geneexp[,patsam]
   expmat[[pat]] <- rowMeans(as.matrix(patexp))-min(geneexp)
-  sdmat[[pat]] <- apply(patexp,1,function(x) sd(x))#/(rowMeans(as.matrix(patexp))-min(geneexp))
+  sdmat[[pat]] <- apply(patexp,1,function(x) sd(x))
 }
 normexp <- rowMeans(as.matrix(geneexp_norm))-min(geneexp_norm)
 normsd <- apply(geneexp_norm,1,function(x) sd(x))
@@ -174,7 +171,7 @@ pheatmap(sdplot,show_rownames = F,cluster_rows=F,cluster_cols=F,
 dev.off()
 
 # Exploring Group
-pdf('figures/fig1BC.exploring_groups.genes.pdf',width=4,height=4)
+pdf('figures/fig1BC.exploring_groups.genes.new.pdf',width=4,height=4)
 par(mfrow=c(1,1),font=2,font.axis=2,font.lab=2,
     mar=c(4.5,4.5,1,1))
 boxplot(Mean_Mean_Exp~Group,data=genedf,col=scales::alpha(ngroupcol,0.5),frame=F,
@@ -189,12 +186,6 @@ boxplot(Mean_Var~Group,data=genedf,col=scales::alpha(ngroupcol,0.5),frame=F,
         outpch=16,outcex=0.5,outcol=scales::alpha(ngroupcol,0.5),las=1)
 mtext(side=1,text='Group',line=3);mtext(side=2,text='Mean Standard Deviation',line=3)
 mtext(side=1,at=c(1:4),text=paste0('n=',as.numeric(table(genedf$Group))),line=2)
-#boxplot(Mean_Var/Mean_Mean_Exp~Group,data=genedf,col=scales::alpha(ngroupcol,0.5),frame=F,
-#        xlab='',ylab='',boxcol=ngroupcol,boxlwd=1.5,medcol=ngroupcol,medlwd=2.5,
-#        staplecol=ngroupcol,staplelwd=1.5,whiskcol=ngroupcol,whisklwd=1.5,cex.axis=1.25,
-#        outpch=16,outcex=0.5,outcol=scales::alpha(ngroupcol,0.5),las=1)
-#mtext(side=1,text='Group',line=3);mtext(side=2,text='Mean SD / Mean Mean Exp',line=3)
-#mtext(side=1,at=c(1:4),text=paste0('n=',as.numeric(table(genedf$Group))),line=2)
 dev.off()
 ```
 
@@ -234,14 +225,14 @@ for(i in c(2:length(keggcat))) {
 ## Run KEGG meta-pathway analysis (Figure 1D)
 ```{r kegg_meta_pathway}
 # Run meta-pathway analysis on each group
-keggGroup1 <- enrichKEGG(genedf$entrezgene[genedf$Group==1],organism='hsa',pvalueCutoff=0.1)
-metakg1 <- enricher(keggGroup1@result$ID[which(keggGroup1@result$p.adjust<0.1)],minGSSize=0,TERM2GENE=allkeggdf,universe=allkeggdf$entrez_gene,pvalueCutoff=0.1)
-keggGroup2 <- enrichKEGG(genedf$entrezgene[genedf$Group==2],organism='hsa',pvalueCutoff=0.1)
-metakg2 <- enricher(keggGroup2@result$ID[which(keggGroup2@result$p.adjust<0.1)],minGSSize=0,TERM2GENE=allkeggdf,universe=allkeggdf$entrez_gene,pvalueCutoff=0.1)
-keggGroup3 <- enrichKEGG(genedf$entrezgene[genedf$Group==3],organism='hsa',pvalueCutoff=0.1)
-metakg3 <- enricher(keggGroup3@result$ID[which(keggGroup3@result$p.adjust<0.1)],minGSSize=0,TERM2GENE=allkeggdf,universe=allkeggdf$entrez_gene,pvalueCutoff=0.1)
-keggGroup4 <- enrichKEGG(genedf$entrezgene[genedf$Group==4],organism='hsa',pvalueCutoff=0.1)
-metakg4 <- enricher(keggGroup4@result$ID[which(keggGroup4@result$p.adjust<0.1)],minGSSize=0,TERM2GENE=allkeggdf,universe=allkeggdf$entrez_gene,pvalueCutoff=0.1)
+keggGroup1 <- enrichKEGG(genedf$entrezgene[genedf$Group==1],organism='hsa',pvalueCutoff=0.1,pAdjustMethod = 'fdr')
+metakg1 <- enricher(keggGroup1@result$ID[which(keggGroup1@result$p.adjust<0.1)],minGSSize=0,pAdjustMethod ='fdr',TERM2GENE=allkeggdf,universe=allkeggdf$entrez_gene,pvalueCutoff=0.1)
+keggGroup2 <- enrichKEGG(genedf$entrezgene[genedf$Group==2],organism='hsa',pvalueCutoff=0.1,pAdjustMethod = 'fdr')
+metakg2 <- enricher(keggGroup2@result$ID[which(keggGroup2@result$p.adjust<0.1)],pAdjustMethod ='fdr',minGSSize=0,TERM2GENE=allkeggdf,universe=allkeggdf$entrez_gene,pvalueCutoff=0.1)
+keggGroup3 <- enrichKEGG(genedf$entrezgene[genedf$Group==3],organism='hsa',pvalueCutoff=0.1,pAdjustMethod = 'fdr')
+metakg3 <- enricher(keggGroup3@result$ID[which(keggGroup3@result$p.adjust<0.1)],pAdjustMethod ='fdr',minGSSize=0,TERM2GENE=allkeggdf,universe=allkeggdf$entrez_gene,pvalueCutoff=0.1)
+keggGroup4 <- enrichKEGG(genedf$entrezgene[genedf$Group==4],organism='hsa',pvalueCutoff=0.1,pAdjustMethod = 'fdr')
+metakg4 <- enricher(keggGroup4@result$ID[which(keggGroup4@result$p.adjust<0.1)],pAdjustMethod ='fdr',minGSSize=0,TERM2GENE=allkeggdf,universe=allkeggdf$entrez_gene,pvalueCutoff=0.1)
 
 # Get the most significant from each group (ignoring un-related categories)
 resmeta <- rbind(c('1',metakg1@result[3,"Description"],metakg1@result[3,"pvalue"],metakg1@result[3,"p.adjust"]),
@@ -254,8 +245,8 @@ colnames(resmeta) <- c('Group','Most Sig KEGG Cat','p-value','FDR')
 pdf('figures/fig1D.meta_enrichment_plot.pdf')
 options(scipen=-2)
 par(font=2,font.axis=2,font.lab=2,mar=c(5,4.5,1,12.5))
-xx <- barplot(rev(-log10(as.numeric(resmeta[,4]))),xlim=c(0,8),horiz=T,col=rev(ngroupcol),border=NA,axes=F,)
-text(x=rev(-log10(as.numeric(resmeta[,4])))+0.1,y=xx,labels=rev(resmeta[,2]),cex=1.5,xpd=T,adj=0)
+xx <- barplot(rev(-log10(as.numeric(resmeta[,4]))),xlim=c(0,3),horiz=T,col=rev(ngroupcol),border=NA,axes=F,)
+text(x=rev(-log10(as.numeric(resmeta[,4])))+0.1,y=xx,labels=rev(resmeta[,2]),cex=1.3,xpd=T,adj=0)
 axis(side=1,line=0,cex.axis=2);mtext(side=1,line=3,text='-log10(FDR)',cex=2)
 mtext(side=2,at=xx,text=c(4:1),col=rev(ngroupcol),las=2,cex=2,line=0.5);mtext(side=2,line=2,text='Groups',cex=2)
 dev.off()

@@ -32,11 +32,11 @@ dnasam <- readRDS('input_files/dna_sample_data.rds')
 dnarna <- dnasam$Sample[which(dnasam$Sample %in% samples)]
 ```
 
-## Plot DNA phylogenies as dendrograms, clusterred heatmaps and get tanglegram statistics
-### Figure S11 (deconstructed)
+## Plot DNA phylogenies as dendrograms, clustered heatmaps and get tanglegram statistics
+### Extended Data Figure 5 (deconstructed)
 ```{r plot_dna_get_stats}
 cophcors <- c()
-pdf('figures/figS11.expressed_dnatree_expclust_tangles.pdf',height=8,width=5)
+pdf('figures/EDfig5.expressed_dnatree_expclust_tangles.pdf',height=8,width=5)
 for(pat in tinfo$patients) {
   
   trimtree <- treelist[[pat]][[1]]

@@ -101,9 +101,9 @@ newsignum <- sapply(gene_lambda_list,function(x) { length(which(x$LamPval<0.05))
 ```
 
 ## Plot comparison of phylo from vst/lognorm
-### Figure S7A&B
+### Figure S5A&B
 ```{r plot_phylo_vst_lognorm_comparison}
-pdf('figures/figS7A.phylo_vst_vs_lognorm.perc.pdf')
+pdf('figures/figS5A.phylo_vst_vs_lognorm.perc.pdf')
 par(mar=c(5,6,1.5,0),font=2,font.axis=2,font.lab=2,cex.axis=1.5)
 newdf <- data.frame(VST=orisignum/nrow(genedf)*100,LogNorm=newsignum/nrow(genedf)*100)
 barplot(t(newdf),beside = T,ylim=c(0,50),las=2,col=brewer.pal(3,'Paired')[c(1,3)],border=NA)
@@ -111,7 +111,7 @@ mtext(side=2,text='% of genes with significant phylogenetic signal',line=3.5,cex
 legend(8,45,legend=c('LogNorm','VST'),fill=rev(brewer.pal(3,'Paired')[c(1,3)]),xpd=T,cex=1.5,bty='n',border=NA)
 dev.off()
 
-pdf('figures/figS7B.phylo_vst_vs_lognorm.shared.pdf',width=8)
+pdf('figures/figS5B.phylo_vst_vs_lognorm.shared.pdf',width=8)
 par(mar=c(5,6,1.5,8.5),font=2,font.axis=2,font.lab=2,cex.axis=1.5)
 barplot(t(compperdf*100),las=2,col=brewer.pal(3,'Paired')[c(2,1,3)],border=NA)
 mtext(side=2,text='% of genes with significant phylogenetic signal',line=3.5,cex=1.5)

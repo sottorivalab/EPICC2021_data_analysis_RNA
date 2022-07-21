@@ -13,7 +13,7 @@ library(phytools);library(DESeq2);library(org.Hs.eg.db);library(phangorn);librar
 ngroupcol= c(wes_palette("Darjeeling2",5)[2],wes_palette('Darjeeling1',5)[2],wes_palette('FantasticFox1',5)[5])
 names(ngroupcol) <- as.numeric(c(1:3))
 col_list <- list(Group=ngroupcol)
-string_db <- STRINGdb$new(version="11",species=9606,score_threshold=200, input_directory="~/Documents/EPICC/PurityAdjust/stringdb_dir/") #input_directory="<path_to_downloaded_string_db_database>")
+string_db <- STRINGdb$new(version="11",species=9606,score_threshold=200, input_directory="~/Dropbox (Personal)/Mac/Documents/EPICC/PurityAdjust/stringdb_dir/") #input_directory="<path_to_downloaded_string_db_database>")
 ```
 
 ## Load tree and expression data
@@ -73,13 +73,13 @@ saveRDS(gene_lambda_list,file='results/gene_lambda_data.rds')
 ```
 
 ## Analyse and plot the results of the phylogenetic gene expression analysis
-### Figure 1G&H and Figure S3)
+### Figure 1E&F and Extended Data Figure 3)
 ```{r plot_phylogenetic_gene_results}
 genedf <- genedf[which(genedf$Group!='4'),]
 reclam <- matrix(0L,nrow=nrow(genedf),ncol=length(tinfo$patients))
 colnames(reclam) <- tinfo$patients;row.names(reclam) <- row.names(genedf)
 recstars <- recpval <- recadjstar <- reclam
-pdf('figures/fig1GH.lambda_analysis_genes.pdf',height=8,width=5)
+pdf('figures/fig1EF&ED3.lambda_analysis_genes.pdf',height=8,width=5)
 for(pat in tinfo$patients) {
   resdf <- gene_lambda_list[[pat]]
   resdf <- resdf[row.names(genedf),]
@@ -127,7 +127,7 @@ saveRDS(recsave,file='results/reccurent_phylogenetic_genes.rds')
 ```
 
 ## Plot recurrent phylogenetic genes
-### Figure 1I
+### Figure 1G
 ```{r plot_rec_phylo}
 geneanot <- recsave[which(rowSums(recstars!='')>=3),];geneanot <- geneanot[order(geneanot$NumRec,decreasing=T),]
 filrecstars <- recstars[row.names(geneanot),];row.names(filrecstars) <- geneanot$hgnc_symbol
@@ -135,7 +135,7 @@ filrecpval <- recpval[row.names(geneanot),];row.names(filrecpval) <- geneanot$hg
 row.names(geneanot) <- geneanot$hgnc_symbol
 geneanot <- geneanot[,c("Mean_Mean_Exp","Group","NumRec")]
 
-pdf('figures/fig1I.recurrent_genes_lambda.pdf',height=12,width=8.5)
+pdf('figures/fig1G.recurrent_genes_lambda.pdf',height=12,width=8.5)
 mybreaks <- seq(0,ceiling(max(filrecpval)),by=0.01)
 pheatmap(filrecpval,show_rownames=T,show_colnames=T,cluster_rows=F,cluster_cols=T,
          border_color=NA,fontsize=15,fontsize_col=20,fontsize_row=11,
@@ -144,13 +144,22 @@ pheatmap(filrecpval,show_rownames=T,show_colnames=T,cluster_rows=F,cluster_cols=
          annotation_row=geneanot,
          annotation_colors=col_list)
 dev.off()
+
+pdf('figures/fig1G.recurrent_genes_lambda.alternative.pdf',height=12,width=3.5)
+mybreaks <- seq(0,ceiling(max(filrecpval)),by=0.01)
+pheatmap(filrecpval,show_rownames=T,show_colnames=T,cluster_rows=F,cluster_cols=T,legend = F,
+         border_color=NA,fontsize=15,fontsize_col=20,fontsize_row=11,treeheight_col = 10,
+         color=wes_palette("Zissou1", length(mybreaks)-1, type = "continuous"),breaks=mybreaks,
+         display_numbers=filrecstars,fontsize_number=18)
+dev.off()
+
 ```
 
 ## Plot chi-squared test of phylo vs. gene groups
-### Figure 1J
+### Figure 1H
 ```{r plot_chisquared_test}
 recsave$Sig <- ifelse(recsave$NumRec>=1,'Sig','NotSig')
-pdf('figures/fig1J.gene_phylo_chiplot.pdf')
+pdf('figures/fig1H.gene_phylo_chiplot.pdf')
 par(mar=c(4.5,4.5,2,2),font=2,font.axis=2,font.lab=2,cex.axis=2)
 
 mat <- matrix(0L,nrow=3,ncol=2,dimnames=list(c('3','2','1'),c('Sig','NotSig')))
@@ -173,7 +182,7 @@ dev.off()
 ```
 
 ## Plot stringDB analysis of recurrently phylogenetic genes
-### Figure 1K
+### Figure 1I
 ```{r plot_chisquared_test}
 stringdf <- string_db$map(recsave, "ensembl_gene_id", removeUnmappedRows = TRUE)
 enrich <- string_db$get_enrichment(stringdf$STRING_id[which(stringdf$NumRec>=3)],category='KEGG')
@@ -183,10 +192,10 @@ write.table(str_split(enrich[which(enrich$description=='PPAR signaling pathway')
 ```
 
 ## Plot the (non-)correlation of sample number x number of sig phylo gene
-### Figure S6
+### Figure S4
 ```{r plot_correlation}
 res <- lm(colSums(recstars!='')~tinfo$numsam);sumres <- summary(res)
-pdf('figures/figS6.correlation_plot_number_samples_vs_sig_phylo_genes.pdf')
+pdf('figures/figS4.correlation_plot_number_samples_vs_sig_phylo_genes.pdf')
 par(mar=c(4,4,1,1),font=2,font.axis=2,font.lab=2)
 plot(tinfo$numsam,colSums(recstars!=''),bty='n',pch=16,cex=2,col='skyblue3',
      xlab='',ylab='',axes=F,xlim=c(0,35),ylim=c(0,2500))

@@ -22,7 +22,7 @@ names(ngroupcol) <- as.numeric(c(1:4))
 protexp <- readRDS('intermediates/All_EPICC_tpm.rds')
 usesymdf <- bitr(protexp$GeneID,fromType = 'ENSEMBL',toType = 'SYMBOL',OrgDb="org.Hs.eg.db")
 usesym <- unique(usesymdf$SYMBOL)
-geneinfo <- readRDS('~/Documents/EPICC/EPICC_RNA_Analysis/EPICC_transcriptome/results/gene_clustering_and_id_conversion.rds')
+geneinfo <- readRDS('results/gene_clustering_and_id_conversion.rds')
 geneinfo <- geneinfo[which(geneinfo$hgnc_symbol %in% usesym),];row.names(geneinfo) <- c(1:nrow(geneinfo))
 
 # Load scRNA-seq data - 
@@ -65,6 +65,9 @@ dfmean <- as.data.frame(listmean);dfsd <- as.data.frame(listsd)
 
 ## Plot expression of filtered genes in single cells - Figure S1
 ```{r plot_exp_fil}
+res <- wilcox.test(rowMeans(dfmean[which(row.names(dfmean) %in% nonfilgen),]),
+                   rowMeans(dfmean[which(row.names(dfmean) %in% filgen),]))
+
 pdf('figures/figS1.singlecellexpVSfilteredgenelist.pdf',width=8)
 par(font=2,font.axis=2,font.lab=2,mar=c(5,5,0.5,0.5))
 vioplot(rowMeans(dfmean[which(row.names(dfmean) %in% nonfilgen),]),

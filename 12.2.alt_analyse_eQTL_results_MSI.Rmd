@@ -37,11 +37,11 @@ enhsubdf <- mutsigdf[which(mutsigdf$ClonalityRNA!='clonal' & mutsigdf$Type %in% 
 ```
 
 ## Plot summaries of eQTL analysis results
-### Figure S22 A&B
+### Figure S18 A&B
 ```{r bar_and_violin_plots}
 # Plot barplot of number of significant models per data type
-# Figure S22A
-pdf('figures/figS22A.eqtl_sig_unique_genes.MSI.pdf',width=9)
+# Figure S18A
+pdf('figures/figS18A.eqtl_sig_unique_genes.MSI.pdf',width=9)
 par(font=2,mar=c(3.6,7,2.1,1.1),xpd=F);options(scipen=-1)
 signum <- rep(0,length(vars));names(signum) <- vars
 for(var in names(signum)) { signum[var] <- length(unique(modsigdf[which(modsigdf[,paste0(var,'adjP')]<0.05),'Ensembl'])) }
@@ -50,8 +50,8 @@ mtext(side=2,text='Significant genes',line=4.5,cex=1.75,xpd=T)
 dev.off()
 
 # Plot violin plot of regression coefficients per data type
-# Figure S22B
-pdf('figures/figS22B.eqtl_regression_coefficients.MSI.pdf',width=9)
+# Figure S18B
+pdf('figures/figS18B.eqtl_regression_coefficients.MSI.pdf',width=9)
 par(font=2,font.axis=2,cex.axis=1.8,mar=c(3.1,4.5,1.6,0.6))
 tmpdf <- modsigdf[,paste0(vars,'es')];colnames(tmpdf) <- vars
 vioplot(tmpdf,col=datacol,ylim=c(-4,6),border=datacol,axes=F,las=1,h=0.2,drawRect=F)
@@ -65,11 +65,11 @@ dev.off()
 ```
 
 ## Plot volcano plots for CNAs and Muts
-### Figure S22C&D
+### Figure S18C&D
 ```{r volcano_plots}
 limxmin <- c(-1,-4,-2,-3.2,-2);limxmax <- c(1.1,6.2,2.2,2.3,2.2);limy <- c(14,19,5,13,20)
 names(limxmin) <- names(limxmax) <- names(limy) <- vars
-pdf('figures/figS22CD.eqtl_volcano_plots.pdf')
+pdf('figures/figS18CD.eqtl_volcano_plots.pdf')
 for(var in vars) {
   newdf <- modsigdf[order(modsigdf[,paste0(var,'adjP')]),];newdf$NewName <- newdf$Gene
   newdf[which(duplicated(newdf$NewName)),'NewName'] <- ''
@@ -83,7 +83,7 @@ dev.off()
 ```
 
 ## Plot the regression coefficients for NS mut and Enh mut separately
-## Figure S22E
+## Figure S18E
 ```{r ns_vs_enh_plot}
 # Split into NS and Enh muts (some can be both)
 nsmut <- mutsigdf[which(mutsigdf$Type %in% c('NS','Both')),]
@@ -99,7 +99,7 @@ matcomp['Enh','Neg'] <- length(which(enhmut$Mutes<0))
 ns_res <- chisq.test(matcomp[1,]);enh_res <- chisq.test(matcomp[2,])
 
 # Plot the regression coefficients of both to illustrate difference
-pdf('figures/figS22E.violin_ns_vs_enh_effects.MSI.pdf',width=5,height=7)
+pdf('figures/figS18E.violin_ns_vs_enh_effects.MSI.pdf',width=5,height=7)
 par(mar=c(4,4.5,1,1),font=2,font.axis=2,font.lab=2,cex.axis=1.5)
 vioplot(nsmut$Mutes,enhmut$Mutes,names=c('Genic','Enhancer'),drawRect=F,col=c(wes_palette("Cavalcanti1")[5],'#5CDBFF'),ylim=c(-4,6),border=c(wes_palette("Cavalcanti1")[5],'#5CDBFF'),axes=F,las=1)
 abline(h=0,lty=2)
@@ -110,7 +110,7 @@ dev.off()
 ```
 
 ## Clonality proportions but mutation centric
-### Figure S22F
+### Figure S18F
 ```{r clonality_vs_eqtl}
 # Number of all unique muts analysed that aren't clonal
 allmutnotclo <- length(unique(newallDF[which(newallDF$ClonalityRNA!='clonal'),'Locus']))
@@ -128,8 +128,8 @@ probmat <- mutmat
 probmat[,'Clonal'] <- mutmat[,'Clonal']/sum(mutmat[,'Clonal'])*100
 probmat[,'Subclonal'] <- mutmat[,'Subclonal']/sum(mutmat[,'Subclonal'])*100
 
-# Plot Figure 5F
-pdf('figures/figS22F.clonality_chiplot.MSI.pdf',height=8,width=5)
+# Plot Figure 18F
+pdf('figures/figS18F.clonality_chiplot.MSI.pdf',height=8,width=5)
 par(mar=c(3,4.5,3,1),font=2,font.axis=2,font.lab=2,cex.axis=2);options(scipen=1)
 xx <- barplot(probmat[2,],beside=F,ylim=c(0,4),border=NA,axes=F,horiz=F,las=1,col=c(wes_palette("Cavalcanti1")[1],wes_palette("GrandBudapest2")[4]))
 axis(side=2,cex.axis=1.75,line=0,las=2)
@@ -140,7 +140,7 @@ dev.off()
 
 
 ## Calculate the proportion of eQTLs that are phylo, and split by clonality
-### Figure S22G
+### Figure S18G
 ```{r new_eqtl_vs_phylo_vs_clonality}
 # Load recurrence of phylogenetic genes result
 phylogen <- readRDS('results/reccurent_phylogenetic_genes.rds')
@@ -219,8 +219,8 @@ mat[1,1] <- allphysig['Non','eQTL']/sum(allphysig['Non',])*100;mat[1,2] <- allph
 mat[2,1] <- clophysig['Non','eQTL']/sum(clophysig['Non',])*100;mat[2,2] <- clophysig['Phylo','eQTL']/sum(clophysig['Phylo',])*100
 mat[3,1] <- subphysig['Non','eQTL']/sum(subphysig['Non',])*100;mat[3,2] <- subphysig['Phylo','eQTL']/sum(subphysig['Phylo',])*100
 
-# Plot Figure 5G
-pdf('figures/figS22G.qtl_vs_phylo_chiplot.pdf',height=8)
+# Plot Figure 18G
+pdf('figures/figS18G.qtl_vs_phylo_chiplot.pdf',height=8)
 par(mar=c(3,4,3,1),font=2,font.axis=2,font.lab=2,cex.axis=1.5)
 xx <- barplot(t(mat),beside=T,ylim=c(0,7),border=c(wes_palette("Cavalcanti1")[c(2,2)],wes_palette("Cavalcanti1")[c(1,1)],wes_palette("GrandBudapest2")[c(4,4)]),axes=F,horiz=F,las=1,density=c(NA,20,NA,20),
               col=c(wes_palette("Cavalcanti1")[c(2,2)],wes_palette("Cavalcanti1")[c(1,1)],wes_palette("GrandBudapest2")[c(4,4)]))
@@ -233,7 +233,7 @@ dev.off()
 ```
 
 ## Compare original eQTL with eQTL+MSI analysis
-### Figure S23
+### Figure S19
 ```{r compare_original_vs_MSI_eQTLs}
 newallDF <- readRDS('results/eqtl_analysis_results.rds')
 msiallDF <- readRDS('results/eqtl_analysis_results.MSI.rds')
@@ -246,7 +246,7 @@ row.names(sigdf) <- c(1:nrow(sigdf));row.names(msisigdf) <- c(1:nrow(msisigdf))
 
 res <- lm(msisigdf$ModelRsq~sigdf$ModelRsq);sumres <- summary(res)
 
-pdf('figures/figS23.ori_vs_msi_rsquared.pdf')
+pdf('figures/figS19.ori_vs_msi_rsquared.pdf')
 par(mar=c(5,5,2,1),font=2,font.axis=2,cex.axis=1.4,font.lab=2)
 plot(sigdf$ModelRsq,msisigdf$ModelRsq,col='white',xlim=c(0,0.6),ylim=c(0,0.6),xlab='',ylab='',bty='n',axes=F)
 abline(a=coef(res)[1],b=coef(res)[2],lty=3,col=scales::alpha('firebrick3',0.75),lwd=3)

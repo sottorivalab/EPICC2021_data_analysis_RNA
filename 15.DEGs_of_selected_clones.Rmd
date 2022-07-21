@@ -1,0 +1,207 @@
+---
+title: "Find and plot DEGs and GSEA pathways of selected clones based on inference results"
+author: "Dr Jacob Househam"
+date: "27/06/2022"
+output: html_document
+---
+
+```{r library, message=FALSE, warning=FALSE, include=FALSE}
+library(msigdbr);library(DESeq2);library(EnhancedVolcano);library(data.table);library(org.Hs.eg.db);library(clusterProfiler);library(enrichplot);library(stringr)
+```
+
+## 1. Load MSigDB Hallmark pathways and slightly modify
+```{r get_hall_t2g}
+m_df = msigdbr(species = "Homo sapiens", category = "H")
+Hallmark_cancer_list = split(x = m_df$entrez_gene, f = m_df$gs_name)
+names(Hallmark_cancer_list) <- gsub('HALLMARK_(\\S+)','\\1',names(Hallmark_cancer_list))
+# Remove spermatogenesis, myogenesis and pancreas_beta_cells
+Hallmark_cancer_list$SPERMATOGENESIS <- NULL
+Hallmark_cancer_list$MYOGENESIS <- NULL
+Hallmark_cancer_list$PANCREAS_BETA_CELLS <- NULL
+# Rename COMPLEMENT
+Hallmark_cancer_list$COMPLEMENT_INNATE_IMMUNE_SYSTEM <- Hallmark_cancer_list$COMPLEMENT
+Hallmark_cancer_list$COMPLEMENT <- NULL
+
+# Include ISC signature and WNT_signalling
+isc <- read.table('input_files/merlossuarez_2011_ISC_signature.txt')[,1]
+geneinfo <- fread('input_files/complete_gene_info.txt.gz')
+isc_entrez <- geneinfo[which(geneinfo$Symbol %in% isc),'Entrez']
+isc_entrez <- isc_entrez[which(!is.na(isc_entrez))]
+
+hall_t2g[c((nrow(hall_t2g)+1):(nrow(hall_t2g)+length(isc_entrez))),] <- cbind(rep('INTESTINAL_STEM_CELL',length(isc_entrez)),as.numeric(isc_entrez))
+wnt_entrez <- read.table('~/Documents/EPICC/PurityAdjust/wnt_signalling_entrez.txt')[,1]
+hall_t2g[c((nrow(hall_t2g)+1):(nrow(hall_t2g)+length(wnt_entrez))),] <- cbind(rep('WNT_SIGNALING',length(wnt_entrez)),as.numeric(wnt_entrez))
+
+# Save hall_t2g
+saveRDS(hall_t2g,'intermediates/hall_t2g.rds')
+```
+
+
+## 2. Load required data
+```{r load_data}
+hall_t2g <- readRDS('intermediates/hall_t2g.rds')
+genedf <- readRDS('results/gene_clustering_and_id_conversion.rds')
+samples <- readRDS('input_files/ListRNAPass.EPICC.txt')[,1]
+samples <- samples[-grep('^C\\d+_E',samples)]
+
+# Remove C sample from C518
+samples <- samples[-grep('^C518_C',samples)]
+allpats <- gsub('(C\\d+)_\\S+_\\S+','\\1',samples);patients <- unique(allpats)
+
+# Load raw gene counts
+rawcount <- readRDS('intermediates/All_EPICC_counts.rds')
+row.names(rawcount) <- rawcount$GeneID
+
+# Detail selected clones
+clones <- c('D_vs_AB','B_vs_CD','B_vs_A','D_vs_BC','ABD_vs_C','custom','B_vs_ACD')
+names(clones) <- c('C518','C524','C531','C538','C542','C551','C559')
+```
+
+# 3. Run DESeq2 (get DEGs) for the real data and Run DESeq2 on 100 random (not selected groups) ####
+```{r get_degs}
+randlists <- deglists <- list()
+
+set.seed(123)
+for(pat in names(clones)[c(2:8)]) {
+  
+  # Get sample names and assign to selected or non-selected clone
+  patsam <- samples[grep(pat,samples)]
+  EPICC <- rawcount[row.names(genedf),patsam]
+  EPICCdata <- as.data.frame(t(EPICC[c(1:2),]));colnames(EPICCdata) <- c('Region','Type')
+  EPICCdata$Region <- gsub("C\\d+_(\\S)\\d+_.+$","\\1",row.names(EPICCdata))
+  if(clones[pat]=='custom') {
+    EPICCdata$Region <- rep('Selected',nrow(EPICCdata))
+    EPICCdata$Region[c(8,11,15,19,27)] <- 'Unselected'
+    selected <- 'Selected';unselected <- 'Unselected'
+  } else {
+    selected <- str_split(clones[pat],'_vs_')[[1]][1];unselected <- str_split(clones[pat],'_vs_')[[1]][2]
+    selreg <- str_split(selected,'')[[1]];unselreg <- str_split(unselected,'')[[1]]
+    EPICCdata[which(EPICCdata$Region %in% selreg),'Region'] <- selected
+    EPICCdata[which(EPICCdata$Region %in% unselreg),'Region'] <- unselected
+  }
+  EPICCdata$Region <- as.factor(EPICCdata$Region)
+  EPICCdata$Type <- as.factor(sapply(row.names(EPICCdata),function(x) if(gsub("C\\d+_\\S\\d+_\\S.+$","\\1",x)=='B') {x<-'Bulk'} else {x<-'Gland'}))
+  
+  # Run DESeq2
+  print(paste0(pat,': ',selected,' (n=',length(which(EPICCdata$Region==selected)),
+               ') vs ',unselected,' (n=',length(which(EPICCdata$Region==unselected)),')'))
+  dds <- DESeqDataSetFromMatrix(countData = EPICC,colData = EPICCdata,design = ~ Region)
+  dds <-DESeq(dds,quiet=F)
+  
+  # Get standard contrast results
+  res <- results(dds,contrast=c('Region',selected,unselected))
+  resdf <- as.data.frame(res)
+  
+  # Get the normalised counts
+  normcount <- assay(normTransform(dds,f=log2,pc=1))
+  
+  # Get the shrunken log2FC values
+  resLFC <- lfcShrink(dds, coef=resultsNames(dds)[2])
+  resdf_lfc <- as.data.frame(resLFC)
+  resdf$log2FoldChange_shrunk <- resdf_lfc$log2FoldChange
+  resdf$lfcSE_shrunk <- resdf_lfc$lfcSE
+  
+  # Merge with gene info df
+  resdf <- merge(resdf,genedf,by=0)
+  row.names(resdf) <- resdf$Row.names;resdf <-resdf[,c(2:ncol(resdf))]
+  
+  # Make into a list and save
+  deglist <- list(DEG=resdf,LogNormCount=normcount)
+  deglists[[pat]] <- deglist
+  
+  # Workout the number of possible combinations of shuffling
+  if(pat %in% c('C551','C559')) {
+    numtodo <- 100
+    print(paste0('Will run ',numtodo,' random shuffles as there are many possible combinations'))
+  } else {
+    try <- as.data.frame(gtools::permutations(n=2,r=nrow(EPICCdata),repeats.allowed = T))
+    numcomb <- length(which(rowSums(try==1)==length(which(EPICCdata$Region==selected)) & rowSums(try==2)==length(which(EPICCdata$Region==unselected))))
+    numtodo <- min(c(numcomb-1,100))
+    print(paste0('Will run ',numtodo,' random shuffles as there are ',numcomb,' possible combinations'))
+  }
+  
+  randlist <- list();regord <- c()
+  for(i in c(1:numtodo)) {
+    newdat <- EPICCdata
+    
+    while(paste(newdat$Region,collapse=',') %in% c(regord,paste(EPICCdata$Region,collapse=','))) {
+      newdat$Region <- sample(EPICCdata$Region)
+    }
+    
+    print(paste0('Random selection ',i,' - ',paste(newdat$Region,collapse=','),'. Running DESeq2'))
+    newdds <- DESeqDataSetFromMatrix(countData=EPICC,colData=newdat,design= ~ Region)
+    newdds <- DESeq(newdds,quiet=T)
+    print(paste0('Random selection ',i,' - ',paste(newdat$Region,collapse=','),'. Finished running DESeq2'))
+    
+    newres <- results(newdds,contrast=c('Region',selected,unselected))
+    newresdf <- as.data.frame(newres)
+    randlist[[paste(newdat$Region,collapse=',')]] <- newresdf
+    regord <- c(regord,paste(newdat$Region,collapse=','))
+  }
+  randlists[[pat]] <- randlist
+}
+```
+
+# 2. Get DEGs and remove if they pop in 5% of shuffled data and plot (Figures S25 & S26) ####
+```{r refine_degs}
+degsup <- degsdn <- goup <- godn <- kgup <- kgdn <- hallup <- halldn <- c()
+deg_genes_up <- deg_genes_dn <- list()
+
+# Figures S25 & S26
+pdf('figures/figS25&26.inference_degs_and_gsea.pdf')
+for(pat in names(clones)) {
+  deglist <- deglists[[pat]]
+  randlist <- randlists[[pat]]
+  resdf <- deglist$DEG
+  
+  padj_rand <- do.call(cbind, lapply(randlist,function(x) { x$padj }));row.names(padj_rand) <- row.names(genedf)
+  logfc_rand <- do.call(cbind, lapply(randlist,function(x) { x$log2FoldChange }));row.names(logfc_rand) <- row.names(genedf)
+  numup <- rowSums(padj_rand<0.05 & logfc_rand>1,na.rm=T)
+  numdn <- rowSums(padj_rand<0.05 & logfc_rand<(1*-1),na.rm=T)
+  
+  thresh <- max(c(3,(length(randlist)*0.05)))
+  excl_gen <- c(names(numup[which(numup>=thresh)]),names(numdn[which(numdn>=thresh)]))
+  filresdf <- resdf[which(row.names(resdf) %ni% excl_gen),]
+  filresdf <- filresdf[which(!duplicated(filresdf$entrezgene)),]
+  filresdf <- filresdf[which(!is.na(filresdf$padj)),]
+  
+  voltitle <- ifelse(pat=='C551','C551 DEG Rest_vs_C1G4B1G3A1G6B1G7B1G2A1G9',paste0('DEG ',clones[pat],' ',pat))
+  
+  print(EnhancedVolcano(filresdf,lab=filresdf$hgnc_symbol,x='log2FoldChange',y='padj',labSize=5,pCutoff=5e-2,pointSize=0.75,
+                  title=voltitle,subtitle='',ylab=bquote(~-Log[10] ~ italic(Padj)),
+                  caption=paste0(length(which(filresdf$padj<0.05 & abs(filresdf$log2FoldChange)>1)),' significant DEGs')) + theme(legend.position = 'none'))
+
+  deg_genes_up[[pat]] <- filresdf$hgnc_symbol[which(filresdf$padj<0.05 & filresdf$log2FoldChange>1)]
+  deg_genes_dn[[pat]] <- filresdf$hgnc_symbol[which(filresdf$padj<0.05 & filresdf$log2FoldChange<1*-1)]
+  
+  degsup <- c(degsup,length(which(filresdf$padj<0.05 & filresdf$log2FoldChange>1)))
+  degsdn <- c(degsdn,length(which(filresdf$padj<0.05 & filresdf$log2FoldChange<1*-1)))
+  
+  genlist <- filresdf$stat;names(genlist) <- filresdf$entrezgene;genlist <- sort(na.omit(genlist),decreasing=T)
+  gse <- NULL;gse <- gseGO(genlist,ont='MF',OrgDb=org.Hs.eg.db,keyType='ENTREZID',pvalueCutoff=0.05)
+  goup <- c(goup,paste(sort(gse@result[which(gse@result$enrichmentScore>0 & gse@result$p.adjust<0.05),'Description']),collapse=';'))
+  godn <- c(godn,paste(sort(gse@result[which(gse@result$enrichmentScore<0 & gse@result$p.adjust<0.05),'Description']),collapse=';'))
+  if(length(which(gse@result$p.adjust<0.05))>=1) {
+    suppressMessages(print(dotplot(gse,showCategory=5,label_format=15,x='Count',title=paste0(pat,' GO Molecular Function'),orderBy='p.adjust',split=".sign",decreasing=F) + facet_grid(.~.sign) + scale_y_discrete(labels=function(x) str_wrap(x, width=40))))
+  }
+  
+  kg <- NULL;kg <- gseKEGG(genlist,pvalueCutoff=0.05)
+  kgup <- c(kgup,paste(sort(kg@result[which(kg@result$enrichmentScore>0 & kg@result$p.adjust<0.05),'Description']),collapse=';'))
+  kgdn <- c(kgdn,paste(sort(kg@result[which(kg@result$enrichmentScore<0 & kg@result$p.adjust<0.05),'Description']),collapse=';'))
+  if(length(which(kg@result$p.adjust<0.05))>=1) {
+    suppressMessages(print(dotplot(kg,showCategory=5,label_format=15,x='Count',title=paste0(pat,' KEGG Pathways'),orderBy='p.adjust',split=".sign",decreasing=F) + facet_grid(.~.sign) + scale_y_discrete(labels=function(x) str_wrap(x, width=40))))
+  }
+  
+  em2 <- NULL;em2 <- GSEA(genlist, TERM2GENE=hall_t2g,pvalueCutoff=0.05)
+  hallup <- c(hallup,paste(sort(em2@result[which(em2@result$enrichmentScore>0 & em2@result$p.adjust<0.05),'Description']),collapse=';'))
+  halldn <- c(halldn,paste(sort(em2@result[which(em2@result$enrichmentScore<0 & em2@result$p.adjust<0.05),'Description']),collapse=';'))
+  if(length(which(em2@result$p.adjust<0.05))>=1) {
+    suppressMessages(print(dotplot(em2,showCategory=5,label_format=15,x='Count',title=paste0(pat,' Hallmark Terms'),orderBy='p.adjust',split=".sign",decreasing=F) + facet_grid(.~.sign) + scale_y_discrete(labels=function(x) str_wrap(x, width=40))))
+  }
+}
+dev.off()
+
+alldata <- list(data=subclone_data,updeg=deg_genes_up,dndeg=deg_genes_dn)
+saveRDS(alldata,file='results/final_subclone_results.rds')
+
+```

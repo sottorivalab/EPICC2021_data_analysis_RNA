@@ -21,6 +21,9 @@ newallDF <- readRDS('results/eqtl_analysis_results.rds')
 matchgene <- row.names(listmat$Expression)
 matchsam <- colnames(listmat$Expression);matchpat <- gsub('(C\\d+)_\\S+','\\1',matchsam)
 
+geneinfo <- readRDS('results/gene_clustering_and_id_conversion.rds')
+geneinfo <- geneinfo[which(geneinfo$Group!='4'),];row.names(geneinfo) <- c(1:nrow(geneinfo))
+
 # Pre-filter results into by specific filters
 # All significant models
 modsigdf <- newallDF[which(newallDF$ModeladjP<0.01),];row.names(modsigdf) <- c(1:nrow(modsigdf))
@@ -33,16 +36,17 @@ selection <- as.data.frame(readxl::read_xlsx('input_files/spatial_and_selection_
 
 
 ## Integrate and plot selection and space vs phylo
-## Figure S37A&B
+## Figure S26A&B
 ```{r selection_and_space_vs_phylo}
 # Load actual phylogenetic genes table
 phylolist <- readRDS('results/gene_lambda_data.rds');phylopat <- names(phylolist)
-allphylores <- data.frame(GeneID=row.names(phylolist$C538),C538=0)
+allphylores <- data.frame(GeneID=geneinfo$ensembl_gene_id,C538=0)
 for(pat in phylopat) {
-  allphylores[[pat]] <- ifelse(phylolist[[pat]]$LamPval<0.05,1,0)
+  tmpphy <- phylolist[[pat]][which(row.names(phylolist[[pat]]) %in% geneinfo$ensembl_gene_id),]
+  allphylores[[pat]] <- ifelse(tmpphy$LamPval<0.05,1,0)
 }
 row.names(allphylores) <- allphylores$GeneID;allphylores <- allphylores[,phylopat]
-allphylores <- allphylores[matchgene,]
+
 
 # Boxplot of selection vs phylo genes
 phyloselect <- selection[which(selection$Tumour %in% phylopat),];row.names(phyloselect) <- c(1:nrow(phyloselect))
@@ -51,29 +55,31 @@ phyloselect$Phylo <- colSums(allphylores)
 selres <- wilcox.test(Phylo~Selection,data=phyloselect)
 spares <- wilcox.test(Phylo~Spatial,data=phyloselect)
 
-pdf('figures/figS37A.selection_vs_phylo.pdf')
+pdf('figures/figS27A.selection_vs_phylo.pdf')
 par(font=2,font.axis=2,font.lab=2,mar=c(4.5,5.5,2,1))
 boxplot(Phylo~Selection,data=phyloselect,las=1,frame=F,col=scales::alpha(colsel,0.5),xlab='',ylab='',ylim=c(0,2500),boxcol=colsel,boxlwd=2.5,medcol=colsel,medlwd=3.5,
         staplecol=colsel,staplelwd=2.5,whiskcol=colsel,whisklwd=2.5,cex.axis=1.25,
         outpch=16,outcex=0.5,outcol=scales::alpha(colsel,0.5))
-mtext(side=1,at=c(1,2),text=paste('n=',as.numeric(table(phyloselect$Selection))),line=2,cex=1.25)
+stripchart(Phylo~Selection,data=phyloselect,vertical=T,method="stack",add=TRUE,pch=20,col='dimgray',cex=1.5)
+mtext(side=1,at=c(1,2),text=paste0('n=',as.numeric(table(phyloselect$Selection))),line=2,cex=1.25)
 mtext(side=2,text='Number of significant phylogenetic genes',line=4,cex=1.25)
 mtext(side=3,line=0.5,text=paste0('wilcoxon p-value = ',signif(selres$p.value,3)))
 dev.off()
 
-pdf('figures/figS37B.spatial_vs_phylo.pdf')
+pdf('figures/figS27B.spatial_vs_phylo.pdf')
 par(font=2,font.axis=2,font.lab=2,mar=c(4.5,5.5,2,1))
 boxplot(Phylo~Spatial,data=phyloselect,las=1,frame=F,col=scales::alpha(colsel,0.5),xlab='',ylab='',ylim=c(0,2500),boxcol=colsel,boxlwd=2.5,medcol=colsel,medlwd=3.5,
         staplecol=colsel,staplelwd=2.5,whiskcol=colsel,whisklwd=2.5,cex.axis=1.25,
         outpch=16,outcex=0.5,outcol=scales::alpha(colsel,0.5))
-mtext(side=1,at=c(1,2),text=paste('n=',as.numeric(table(phyloselect$Spatial))),line=2,cex=1.25)
+stripchart(Phylo~Spatial,data=phyloselect,vertical=T,method="stack",add=TRUE,pch=20,col='dimgray',cex=1.5)
+mtext(side=1,at=c(1,2),text=paste0('n=',as.numeric(table(phyloselect$Spatial))),line=2,cex=1.25)
 mtext(side=2,text='Number of significant phylogenetic genes',line=4,cex=1.25)
 mtext(side=3,line=0.5,text=paste0('wilcoxon p-value = ',signif(spares$p.value,3)))
 dev.off()
 ```
 
 ## Integrate and plot selection and space vs eQTL
-## Figure S37C&D
+## Figure S27C&D
 ```{r selection_and_space_vs_eqtl}
 eqtlpat <- unique(matchpat)
 eqtlselect <- selection[which(selection$Tumour %in% eqtlpat),];row.names(eqtlselect) <- c(1:nrow(eqtlselect))
@@ -95,12 +101,13 @@ names(tots) <- names(sigs) <- names(props) <- eqtlpat
 reseqtl <- wilcox.test((as.numeric(props)*100)~eqtlselect$Selection)
 reseqtlspa <- wilcox.test((as.numeric(props)*100)~eqtlselect$Spatial)
 
-pdf('figures/figS37C.selection_vs_eqtls.pdf')
+pdf('figures/figS26C.selection_vs_eqtls.pdf')
 par(font=2,font.axis=2,font.lab=2,mar=c(4.5,4,2,1))
 boxplot(as.numeric(props)*100~eqtlselect$Selection,las=1,frame=F,col=scales::alpha(colsel,0.5),xlab='',ylab='',ylim=c(0,10),boxcol=colsel,boxlwd=2.5,medcol=colsel,medlwd=3.5,
         staplecol=colsel,staplelwd=2.5,whiskcol=colsel,whisklwd=2.5,cex.axis=1.25,
         outpch=16,outcex=1,outcol=colsel)
-mtext(side=1,at=c(1,2),text=paste('n=',as.numeric(table(eqtlselect$Selection))),line=2,cex=1.25)
+stripchart(as.numeric(props)*100~eqtlselect$Selection,vertical=T,method="stack",add=TRUE,pch=20,col='dimgray',cex=1.5)
+mtext(side=1,at=c(1,2),text=paste0('n=',as.numeric(table(eqtlselect$Selection))),line=2,cex=1.25)
 mtext(side=2,text='% of tested eQTLs that were significant',line=2.5,cex=1.25)
 mtext(side=3,line=0.5,text=paste0('wilcoxon p-value = ',signif(reseqtl$p.value,3)))
 dev.off()
@@ -125,7 +132,7 @@ selregs <- abs(mutsigdf[which(mutsigdf$ID %in% selecteds),'Mutes'])
 allregs <- list(neuregs,selregs);names(allregs) <- c('Neutral','Selected')
 sigregs <- wilcox.test(allregs$Neutral,allregs$Selected)
 
-pdf('figures/figS37D.selection_vs_regcoefs.pdf')
+pdf('figures/figS27D.selection_vs_regcoefs.pdf')
 par(mar=c(4.5,4.5,1,1),font=2,font.axis=2,font.lab=2,cex.axis=1.5)
 vioplot(newlist,las=2,col=ifelse(newselect$Selection=='Neutral',colsel[1],colsel[2]),border=ifelse(newselect$Selection=='Neutral',colsel[1],colsel[2]),axes=F,drawRect=F,ylim=c(0,6))
 mtext(side=2,text='Absolute regression coefficients of significant mut eQTLs',line=2.8,cex=1.3)
@@ -135,6 +142,7 @@ par(mar=c(4,4.5,1,1),font=2,font.axis=2,font.lab=2,cex.axis=1.5)
 vioplot(allregs,drawRect=F,las=1,col=colsel,border=colsel,axes=F,ylim=c(0,6))
 mtext(side=2,text='Absolute regression coefficients of significant mut eQTLs',line=2.8,cex=1.3)
 mtext(side=3,line=-1,text=paste0('wilcoxon p-value = ',signif(sigregs$p.value,3)))
+mtext(side=1,at=c(1,2),text=paste0('n=',as.numeric(sapply(allregs,length))),line=2.5,cex=1.25)
 dev.off()
 
 ```

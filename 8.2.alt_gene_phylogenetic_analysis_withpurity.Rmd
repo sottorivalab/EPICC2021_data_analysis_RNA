@@ -82,13 +82,13 @@ saveRDS(gene_lambda_list,file='results/gene_lambda_data.puritycorrected.rds')
 ```
 
 ## Analyse and plot the results of the phylogenetic gene expression analysis
-### Figure S8A&B)
+### Figure S6A&B)
 ```{r plot_phylogenetic_gene_results}
 genedf <- genedf[which(genedf$Group!='4'),]
 reclam <- matrix(0L,nrow=nrow(genedf),ncol=length(tinfo$patients))
 colnames(reclam) <- tinfo$patients;row.names(reclam) <- row.names(genedf)
 recstars <- recpval <- recadjstar <- reclam
-pdf('figures/figS8AB.lambda_analysis_genes.purity.pdf',height=8,width=5)
+pdf('figures/figS6AB.lambda_analysis_genes.purity.pdf',height=8,width=5)
 for(pat in tinfo$patients) {
   resdf <- gene_lambda_list[[pat]]
   resdf <- resdf[row.names(genedf),]
@@ -137,7 +137,7 @@ saveRDS(recsave,file='results/reccurent_phylogenetic_genes.puritycorrected.rds')
 ```
 
 ## Plot recurrent phylogenetic genes
-### Figure S8C
+### Figure S6C
 ```{r plot_rec_phylo}
 geneanot <- recsave[which(rowSums(recstars!='')>=3),];geneanot <- geneanot[order(geneanot$NumRec,decreasing=T),]
 filrecstars <- recstars[row.names(geneanot),];row.names(filrecstars) <- geneanot$hgnc_symbol
@@ -145,7 +145,7 @@ filrecpval <- recpval[row.names(geneanot),];row.names(filrecpval) <- geneanot$hg
 row.names(geneanot) <- geneanot$hgnc_symbol
 geneanot <- geneanot[,c("Mean_Mean_Exp","Group","NumRec")]
 
-pdf('figures/figS8C.recurrent_genes_lambda.purity.pdf',height=13,width=8.5)
+pdf('figures/figS6C.recurrent_genes_lambda.purity.pdf',height=13,width=8.5)
 mybreaks <- seq(0,ceiling(max(filrecpval)),by=0.01)
 pheatmap(filrecpval,show_rownames=T,show_colnames=T,cluster_rows=F,cluster_cols=T,
          border_color=NA,fontsize=15,fontsize_col=20,fontsize_row=11,
@@ -157,10 +157,10 @@ dev.off()
 ```
 
 ## Plot chi-squared test of phylo vs. gene groups
-### Figure S8D
+### Figure S6D
 ```{r plot_chisquared_test}
 recsave$Sig <- ifelse(recsave$NumRec>=1,'Sig','NotSig')
-pdf('figures/figS8D.gene_phylo_chiplot.purity.pdf')
+pdf('figures/figS6D.gene_phylo_chiplot.purity.pdf')
 par(mar=c(4.5,4.5,2,2),font=2,font.axis=2,font.lab=2,cex.axis=2)
 
 mat <- matrix(0L,nrow=3,ncol=2,dimnames=list(c('3','2','1'),c('Sig','NotSig')))
@@ -212,9 +212,9 @@ newsignum <- sapply(gene_lambda_list,function(x) { length(which(x$LamPval<0.05))
 ```
 
 ## Plot comparison of phylo from vst/lognorm
-### Figure S8E&F
-```{r plot_phylo_vst_lognorm_comparison}
-pdf('figures/figS8E.phylo_vst_vs_lognorm.perc.pdf')
+### Figure S6E&F
+```{r plot_purity_comparison}
+pdf('figures/figS6E.perc.purity.pdf')
 par(mar=c(5,6,1.5,0),font=2,font.axis=2,font.lab=2,cex.axis=1.5)
 newdf <- data.frame(VST=orisignum/nrow(genedf)*100,LogNorm=newsignum/nrow(genedf)*100)
 barplot(t(newdf),beside = T,ylim=c(0,30),las=2,col=brewer.pal(3,'Paired')[c(1,3)],border=NA)
@@ -222,7 +222,7 @@ mtext(side=2,text='% of genes with significant phylogenetic signal',line=3.5,cex
 legend(6,30,legend=c('Purity','Original'),fill=rev(brewer.pal(3,'Paired')[c(1,3)]),xpd=T,cex=2,bty='n',border=NA)
 dev.off()
 
-pdf('figures/figS8F.phylo_vst_vs_lognorm.shared.pdf',width=8)
+pdf('figures/figS6F.shared.purity.pdf',width=8)
 par(mar=c(5,6,1.5,8.5),font=2,font.axis=2,font.lab=2,cex.axis=1.5)
 barplot(t(compperdf*100),las=2,col=brewer.pal(3,'Paired')[c(2,1,3)],border=NA)
 mtext(side=2,text='% of genes with significant phylogenetic signal',line=3.5,cex=1.5)

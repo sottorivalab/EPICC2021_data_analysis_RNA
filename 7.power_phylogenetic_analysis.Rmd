@@ -33,7 +33,7 @@ getpower <- function(node,inc=100) {
 ```
 
 ## Firstly make and plot example tree and phylogenetic analysis
-## Figure 3E&F
+## Figure S3
 ```{r example_tree}
 # Load all trees and info
 treelist <- readRDS('intermediates/pgls.trees.rds')
@@ -62,15 +62,15 @@ for(i in c(1:nrow(dataloglik))) {
   dataloglik[i,'W_1'] <- oneres$lik(as.numeric(row.names(dataloglik)[i]))
 }
 
-# Plot Figure 3E & F
-pdf('figures/fig3EF.example_phylogenetic_signal.pdf',width=8)
+# Plot Figure S3
+pdf('figures/figS3.example_phylogenetic_signal.pdf',width=8)
 options(scipen = -1);par(mar=c(0,0,2,6),xpd=T,font=2,font.axis=2,font.lab=2)
 plot.phylo(tree,type="phylogram",align.tip.label = T,edge.width=3,font=2,cex=1,label.offset=200)
 edgelabels(round(tree$edge.length), pos=c(rep(3,10),1,3,3,3),frame='none',font=2)
 mtext(side=4,line=0.5,text=round(rev(exampleexp$W_0),digits=2),at=c(1:8),col=colorRampPalette(brewer.pal(11,'RdYlGn')[c(7:11)])(950)[(round(rev(exampleexp$W_0+0.01),digits=2)*100)],las=1)
 mtext(side=4,line=3,text=round(rev(exampleexp$W_1),digits=2),at=c(1:8),col=colorRampPalette(brewer.pal(9,'BuPu')[c(5:9)])(950)[(round(rev(exampleexp$W_1+0.01),digits=2)*100)],las=1)
 
-# Plot Figure 3B
+# Plot log-likelihood plot
 par(mar=c(4,5,1,1),font=2,font.lab=2,font.axis=2,cex.axis=1.5)
 plot(as.numeric(row.names(dataloglik)),dataloglik[,1],type='o',pch=21,cex=2,lwd=1.5,
      bg=colorRampPalette(brewer.pal(11,'RdYlGn')[c(7:11)])(950)[700],ylim=c(-26,-16),lty=2,xlab='',ylab='',axes=F,bty='n')
@@ -125,7 +125,7 @@ saveRDS(all_compiled_power,file='results/phylogenetic_power_median_100.rds')
 ```
 
 ## Plot the results of the phylogenetic power analysis
-### Figure S9 A-H
+### Figure S7 A-H
 ```{r plot_power}
 # Prepare percpower dataframe
 percpower <- rep(NA,length(tinfo$patients));names(percpower) <- tinfo$patients
@@ -146,8 +146,8 @@ for(pat in tinfo$patients) {
     nodepower[pat] <- enufnode
   }
   
-  # Plot Figure S4 A-H
-  pdf(paste0('figures/figS9.power_sim_100_median.',pat,'.pdf'),width=9)
+  # Plot Figure S7 A-H
+  pdf(paste0('figures/figS7.power_sim_100_median.',pat,'.pdf'),width=9)
   mybreaks <- seq(0,1,by=0.01);rowdf <- data.frame(PercIncrease=seq.int(0,100,by=5));row.names(rowdf) <- row.names(powerdf)
   pheatmap(powerdf,show_rownames=F,show_colnames=T,main=paste0(pat,' Median Power'),cluster_rows=F,angle_col=angle,annotation_names_row=F,
            cluster_cols=F,border_color=NA,fontsize = 10,breaks=mybreaks,annotation_row=rowdf,

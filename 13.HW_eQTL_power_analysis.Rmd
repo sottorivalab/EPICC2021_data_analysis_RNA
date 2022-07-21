@@ -145,13 +145,13 @@ mutmut$SignCorrect <- signcorrect
 ```
 
 ## Plot significant HW eQTLs
-### Figure S18 A-I
+### Figure S14 A-I
 ```{r plot_sig_HW_eQTLs}
 # Filter for eQTLs which validate in HW
 sigmut <- mutmut[which(mutmut$hw_pval<0.05 & mutmut$SignCorrect=='Correct' & mutmut$HW_RNArec>=2),]
 
-# Plot Figure S18 A-I
-pdf('figures/figS18AI.hw_mut_qtls_sigexp.pdf')
+# Plot Figure S14 A-I
+pdf('figures/figS14AI.hw_mut_qtls_sigexp.pdf')
 layout(matrix(c(1:4),nrow=2,byrow=T))
 tmpData <- data.frame(Expression=rep(0,length(hwrnasam)),Mut='WT')
 par(mar=c(4,3.5,2.5,1),font=2,font.axis=2,font.lab=2);options(scipen=-2)
@@ -176,7 +176,7 @@ dev.off()
 ```
 
 ## Run and plot post-hoc power analysis for HW cohort
-### Figure S18J
+### Figure S14J
 ```{r HW_eqtl_power}
 # Select only loci which have at least 2 matched DNA-RNA HW samples mutated
 mutmut <- mutmut[which(mutmut$HW_RNArec>=2),]
@@ -195,8 +195,8 @@ for(i in c(1:nrow(mutmut))) {
 }
 mutmut$SamNeeded <- samneeded
 
-# Plot Figure S18J
-pdf('figures/figS18J.HW_eqtl_power_analysis.pdf')
+# Plot Figure S14J
+pdf('figures/figS14J.HW_eqtl_power_analysis.pdf')
 par(mar=c(4,4,1,1),font=2,font.axis=2,font.lab=2,cex.axis=1.25)
 plot(mutmut$SamNeeded[which(mutmut$hw_pval>=sigthresh | mutmut$SignCorrect!='Correct')],mutmut$HW_RNArec[which(mutmut$hw_pval>=sigthresh | mutmut$SignCorrect!='Correct')],axes=F,pch=16,xlab='',ylab='',
      col=scales::alpha('dimgray',0.5),ylim=c(0,15),xlim=c(0,20),cex=2)

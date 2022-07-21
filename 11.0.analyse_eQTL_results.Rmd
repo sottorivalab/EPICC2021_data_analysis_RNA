@@ -83,7 +83,7 @@ dev.off()
 ```
 
 ## Analyse and plot directionality of CNA vs expression associations
-### Figure S17
+### Figure S13
 ```{r cna_pos_neg}
 cnasigdf <- modsigdf[which(modsigdf$CNAadjP<0.05),];row.names(cnasigdf) <- c(1:nrow(cnasigdf))
 cnasigdf$Direction <- ifelse(cnasigdf$CNAes>=0,'Pos','Neg')
@@ -99,7 +99,7 @@ for(i in c(1:nrow(cnagendf))) {
   prop4 <- c(prop4,length(which(curcna==4))/ncol(listmat$CNA))
 }
 
-pdf('figures/figS17.CNA_pos_vs_neg_eQTLs.pdf',width=12,height=12)
+pdf('figures/figS13.CNA_pos_vs_neg_eQTLs.pdf',width=12,height=12)
 layout(matrix(c(1:4),nrow=2,byrow=T))
 par(mar=c(4,4,4,1),cex.axis=1.35,font=2,font.axis=2,font.lab=2)
 library(vioplot);options(scipen=-1);ymax <- c(0.3,1,0.6,0.4)
@@ -146,7 +146,7 @@ dev.off()
 ```
 
 ## Clonality proportions but mutation centric
-### Figure 5F
+### Figure 2F
 ```{r clonality_vs_eqtl}
 # Number of all unique muts analysed that aren't clonal
 allmutnotclo <- length(unique(newallDF[which(newallDF$ClonalityRNA!='clonal'),'Locus']))
@@ -164,8 +164,8 @@ probmat <- mutmat
 probmat[,'Clonal'] <- mutmat[,'Clonal']/sum(mutmat[,'Clonal'])*100
 probmat[,'Subclonal'] <- mutmat[,'Subclonal']/sum(mutmat[,'Subclonal'])*100
 
-# Plot Figure 5F
-pdf('figures/fig5F.clonality_chiplot.pdf',height=8,width=5)
+# Plot Figure 2F
+pdf('figures/fig2F.clonality_chiplot.pdf',height=8,width=5)
 par(mar=c(3,4.5,3,1),font=2,font.axis=2,font.lab=2,cex.axis=2);options(scipen=1)
 xx <- barplot(probmat[2,],beside=F,ylim=c(0,4),border=NA,axes=F,horiz=F,las=1,col=c(wes_palette("Cavalcanti1")[1],wes_palette("GrandBudapest2")[4]))
 axis(side=2,cex.axis=1.75,line=0,las=2)
@@ -176,7 +176,7 @@ dev.off()
 
 
 ## Calculate the proportion of eQTLs that are phylo, and split by clonality
-### Figure 5G
+### Figure 2G
 ```{r new_eqtl_vs_phylo_vs_clonality}
 # Load recurrence of phylogenetic genes result
 phylogen <- readRDS('results/reccurent_phylogenetic_genes.rds')
@@ -255,8 +255,8 @@ mat[1,1] <- allphysig['Non','eQTL']/sum(allphysig['Non',])*100;mat[1,2] <- allph
 mat[2,1] <- clophysig['Non','eQTL']/sum(clophysig['Non',])*100;mat[2,2] <- clophysig['Phylo','eQTL']/sum(clophysig['Phylo',])*100
 mat[3,1] <- subphysig['Non','eQTL']/sum(subphysig['Non',])*100;mat[3,2] <- subphysig['Phylo','eQTL']/sum(subphysig['Phylo',])*100
 
-# Plot Figure 5G
-pdf('figures/fig5G.qtl_vs_phylo_chiplot.pdf',height=8)
+# Plot Figure 2G
+pdf('figures/fig2G.qtl_vs_phylo_chiplot.pdf',height=8)
 par(mar=c(3,4,3,1),font=2,font.axis=2,font.lab=2,cex.axis=1.5)
 xx <- barplot(t(mat),beside=T,ylim=c(0,7),border=c(wes_palette("Cavalcanti1")[c(2,2)],wes_palette("Cavalcanti1")[c(1,1)],wes_palette("GrandBudapest2")[c(4,4)]),axes=F,horiz=F,las=1,density=c(NA,20,NA,20),
               col=c(wes_palette("Cavalcanti1")[c(2,2)],wes_palette("Cavalcanti1")[c(1,1)],wes_palette("GrandBudapest2")[c(4,4)]))
@@ -268,7 +268,7 @@ legend(x=6.5,y=6.9,xpd=T,cex=1.4,legend=colnames(mat),bty='n',fill='gray60',dens
 dev.off()
 ```
 
-## Run and plot eQTL power analysis - Figure S19
+## Run and plot eQTL power analysis - Figure S15
 ```{r plot_eQTL_power}
 sigres <- newallDF[which(newallDF$ModeladjP<0.01),];row.names(sigres) <- c(1:nrow(sigres))
 mutres <- sigres[which(sigres$MutadjP<0.05),];row.names(mutres) <- c(1:nrow(mutres))
@@ -286,7 +286,7 @@ for(j in c(1:length(inters))) {
   pwrlist[[paste0(bottom,'-',top)]] <- pwreqtl[which(eqtles>bottom & eqtles<=top)]
 }
 
-pdf('figures/figS19.eqtl_power.pdf')
+pdf('figures/figS15.eqtl_power.pdf')
 plotcol <- 'white'
 par(mfrow=c(1,1),font=2,font.axis=2,font.lab=2,mar=c(7,4,2,0.5))
 boxplot(pwrlist,col=scales::alpha(plotcol,0.5),frame=F,

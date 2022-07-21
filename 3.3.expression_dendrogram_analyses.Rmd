@@ -8,7 +8,7 @@ output: html_document
 ```{r library, message=FALSE, warning=FALSE, include=FALSE}
 library(DESeq2);library(phangorn);library(wesanderson);library(pheatmap)
 library(data.table);library(phylogram);library(dendextend);library(usedist)
-options(datatable.fread.datatable=FALSE)
+options(datatable.fread.datatable=FALSE);library(RColorBrewer)
 regcol <- c(A='#E31A1C',B='#377DB8',C='#4DAE49',D='#904A9A',Root='#808080');rcol <- regcol[c(1:4)]
 ```
 
@@ -38,11 +38,11 @@ patients <- c('C518','C524','C531','C532','C537','C538','C542','C543','C544','C5
 ```
 
 ## Generate and plot expression clustered dendrograms, plus matching heatmaps
-### Plots used in Figures S12 and S14
-### To complete Figure S12, take trees from Fig 3 & Figure S28
+### Plots used in Figures S8 and S10
+### To complete Figure S8, take phylogenetic trees from Figure 4 & Extended Figure 7
 ```{r plot_dna_get_stats}
 expdists <- expdends <- list()
-pdf('figures/figS12&14.gene_expression_dendrograms.pdf',height=5.556)
+pdf('figures/figS8&10.gene_expression_dendrograms.pdf',height=5.556)
 par(mar=c(4,4,2,2),font=2,font.axis=2,font.lab=2)
 for(pat in patients) {
   vsd_pat <- vsd[which(names(vsd@rowRanges) %in% row.names(genedf)),tsam[grep(pat,tsam)]]
@@ -56,14 +56,14 @@ for(pat in patients) {
   patdend <- set(patdend,"branches_lwd", 2)
   labels(patdend) <- gsub('^C\\d+_(\\S+)$','\\1',labels(patdend))
   expdends[[pat]] <- patdend
-  # Plotted 'backwards' for Figure S12
+  # Plotted 'backwards' for Figure S8
   par(mar=c(4,4,2,2),font=2,font.axis=2,font.lab=2)
   plot_horiz.dendrogram(patdend,side = T, main=pat)
-  # Plotted right-facing for Figure S14
+  # Plotted right-facing for Figure S10
   par(mar=c(4,2,2,4),font=2,font.axis=2,font.lab=2)
   plot(patdend,horiz = TRUE,main=pat)
   
-  # Plot heatmaps to go in Figure S14
+  # Plot heatmaps to go in Figure S10
   explot <- t(assay(vsd_pat));row.names(explot) <- gsub('^C\\d+_(\\S+_\\S+)$','\\1',labels(patdend))
   sdexp <- apply(explot,2,sd)
   explot <- explot[,which(sdexp!=0)]
@@ -80,7 +80,7 @@ saveRDS(list(dists=expdists,dends=expdends),file='intermediates/exp_dists_and_de
 ```
 
 ## Run permutation test for clustering association with region and plot result
-### Figure S15
+### Figure S11
 ```{r run_and_plot_permutation}
 explist <- readRDS('intermediates/exp_dists_and_dends.rds')
 
@@ -118,7 +118,7 @@ for(p in c(1:length(patients))) {
 resdist$Adj <- p.adjust(resdist$Sig,method='fdr')
 
 # Plot permutation test
-pdf(paste0('figures/figS15.mixing_permutations_expression.cophenetic.pdf'),width=6,height=8)
+pdf(paste0('figures/figS11.mixing_permutations_expression.cophenetic.pdf'),width=6,height=8)
 layout(matrix(c(1:12),nrow=4,ncol=3,byrow=T))
 for(p in c(1:length(patients))) {
   pat <- patients[p];permdists <- permlist[[pat]]
@@ -137,6 +137,8 @@ saveRDS(resdist,file='results/expression_clustering_mixing_results.rds')
 
 ## Generate expression distances with CIBERSORTx distances
 ```{r generate_distances}
+patients <- c('C518','C524','C531','C532','C537','C538','C542','C543','C544','C549','C550','C551','C552','C554','C559','C560','C561')
+explist <- readRDS('intermediates/exp_dists_and_dends.rds');expdists <- explist$dists
 ciber <- read.delim("input_files/CIBERSORTx_EPICC.txt");ciber <- ciber[ciber$Mixture %in% tsam,]
 row.names(ciber) <- ciber$Mixture
 celltypes <- colnames(ciber[,c(2:23)])
@@ -176,12 +178,12 @@ disexp_dists$ciber_d <- as.numeric(disexp_dists$ciber_d)
 ```
 
 ## Plot comparison of expression and immune based distances
-### Figure S16 (A-C)
+### Figure S12 (A-C)
 ```{r plot_compare_distances}
 datacol <- brewer.pal(3,'Accent')[c(1:2)]
 res <- lm(disexp_dists$ciber_d~disexp_dists$exp_d);sumres <- summary(res)
 
-pdf('figures/figS16A.CIBER_vs_Expression_Distance.pdf')
+pdf('figures/figS12A.CIBER_vs_Expression_Distance.pdf')
 par(las=1,cex.axis=1.5,cex.lab=1.5,font=2,font.lab=2,font.axis=2,mar=c(4.5,5,2.5,1))
 plot(disexp_dists$exp_d,disexp_dists$ciber_d,pch=16,
      col=scales::alpha(ifelse(disexp_dists$pair_type=='within-regions',datacol[1],datacol[2]),0.6),xlim=c(0,500),ylim=c(0,30),bty='n',xlab='Expressed Genes',ylab='CIBERSORT Absolute Score')
@@ -193,7 +195,7 @@ legend('topleft',bty='n',col=datacol,pch=16,
 dev.off()
 
 disexp_dists$pair_type <- factor(disexp_dists$pair_type,levels=c('within-regions','between-regions'))
-pdf('figures/figS16BC.CIBER_and_Expression_violins.pdf',width=5.5,height=5.5)
+pdf('figures/figS12BC.CIBER_and_Expression_violins.pdf',width=5.5,height=5.5)
 res <- wilcox.test(exp_d~pair_type,data=disexp_dists)
 datacol <- brewer.pal(3,'Accent')[c(1:2)]
 par(mar=c(5,5,2,1),font.axis=2,font=2,font.lab=2,cex.lab=1.5,cex.axis=1.2)

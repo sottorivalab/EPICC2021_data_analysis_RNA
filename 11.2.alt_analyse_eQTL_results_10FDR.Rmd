@@ -1,5 +1,5 @@
 ---
-title: "Analyse eQTL results using a different threshold of 10% FDR"
+title: "Analyse eQTL results using a different threshold of 10% FDR - Only used as a Review Figure"
 author: "Dr Jacob Househam"
 date: "23/06/2021"
 output: html_document
@@ -37,11 +37,11 @@ enhsubdf <- mutsigdf[which(mutsigdf$ClonalityRNA!='clonal' & mutsigdf$Type %in% 
 ```
 
 ## Plot summaries of eQTL analysis results
-### Figure 2 A&B
+### Figure R22 A&B
 ```{r bar_and_violin_plots}
 # Plot barplot of number of significant models per data type
-# Figure 2A
-pdf('figures/fig2A.eqtl_sig_unique_genes.pdf',width=9)
+# Figure R22 A
+pdf('figures/figR22A.eqtl_sig_unique_genes.pdf',width=9)
 par(font=2,mar=c(3.6,7,2.1,1.1),xpd=F);options(scipen=-1)
 signum <- rep(0,4);names(signum) <- vars
 for(var in names(signum)) { signum[var] <- length(unique(modsigdf[which(modsigdf[,paste0(var,'adjP')]<0.05),'Ensembl'])) }
@@ -50,8 +50,8 @@ mtext(side=2,text='Significant genes',line=4.5,cex=1.75,xpd=T)
 dev.off()
 
 # Plot violin plot of regression coefficients per data type
-# Figure 2B
-pdf('figures/fig2B.eqtl_regression_coefficients.pdf',width=9)
+# Figure R22 B
+pdf('figures/figR22B.eqtl_regression_coefficients.pdf',width=9)
 par(font=2,font.axis=2,cex.axis=1.8,mar=c(3.1,4.5,1.6,0.6))
 tmpdf <- modsigdf[,paste0(vars,'es')];colnames(tmpdf) <- vars
 vioplot(tmpdf,col=datacol,ylim=c(-4,6),border=datacol,axes=F,las=1,h=0.2,drawRect=F)
@@ -65,11 +65,11 @@ dev.off()
 ```
 
 ## Plot volcano plots for CNAs and Muts
-### Figure 2 C&D
+### Figure R22 C&D
 ```{r volcano_plots}
 limxmin <- c(-1,-4,-2,-3.2);limxmax <- c(1.1,6.2,2.2,2.3);limy <- c(14,19,5,13)
 names(limxmin) <- names(limxmax) <- names(limy) <- vars
-pdf('figures/fig2CD.eqtl_volcano_plots.pdf')
+pdf('figures/figR22CD.eqtl_volcano_plots.pdf')
 for(var in vars) {
   newdf <- modsigdf[order(modsigdf[,paste0(var,'adjP')]),];newdf$NewName <- newdf$Gene
   newdf[which(duplicated(newdf$NewName)),'NewName'] <- ''
@@ -83,7 +83,7 @@ dev.off()
 ```
 
 ## Analyse and plot directionality of CNA vs expression associations
-### Figure S7
+### Figure R23
 ```{r cna_pos_neg}
 cnasigdf <- modsigdf[which(modsigdf$CNAadjP<0.05),];row.names(cnasigdf) <- c(1:nrow(cnasigdf))
 cnasigdf$Direction <- ifelse(cnasigdf$CNAes>=0,'Pos','Neg')
@@ -99,7 +99,7 @@ for(i in c(1:nrow(cnagendf))) {
   prop4 <- c(prop4,length(which(curcna==4))/ncol(listmat$CNA))
 }
 
-pdf('figures/figS7.CNA_pos_vs_neg_eQTLs.pdf',width=12,height=12)
+pdf('figures/figR23.CNA_pos_vs_neg_eQTLs.pdf',width=12,height=12)
 layout(matrix(c(1:4),nrow=2,byrow=T))
 par(mar=c(4,4,4,1),cex.axis=1.35,font=2,font.axis=2,font.lab=2)
 library(vioplot);options(scipen=-1);ymax <- c(0.3,1,0.6,0.4)
@@ -119,7 +119,7 @@ dev.off()
 ```
 
 ## Plot the regression coefficients for NS mut and Enh mut separately
-## Figure 2E
+## Figure R22E
 ```{r ns_vs_enh_plot}
 # Split into NS and Enh muts (some can be both)
 nsmut <- mutsigdf[which(mutsigdf$Type %in% c('NS','Both')),]
@@ -135,7 +135,7 @@ matcomp['Enh','Neg'] <- length(which(enhmut$Mutes<0))
 ns_res <- chisq.test(matcomp[1,]);enh_res <- chisq.test(matcomp[2,])
 
 # Plot the regression coefficients of both to illustrate difference
-pdf('figures/fig2E.violin_ns_vs_enh_effects.pdf',width=5,height=7)
+pdf('figures/figR22E.violin_ns_vs_enh_effects.pdf',width=5,height=7)
 par(mar=c(4,4.5,1,1),font=2,font.axis=2,font.lab=2,cex.axis=1.5)
 vioplot(nsmut$Mutes,enhmut$Mutes,names=c('Genic','Enhancer'),drawRect=F,col=c(wes_palette("Cavalcanti1")[5],'#5CDBFF'),ylim=c(-4,6),border=c(wes_palette("Cavalcanti1")[5],'#5CDBFF'),axes=F,las=1)
 abline(h=0,lty=2)
@@ -146,7 +146,7 @@ dev.off()
 ```
 
 ## Clonality proportions but mutation centric
-### Figure 5F
+### Figure R22F
 ```{r clonality_vs_eqtl}
 # Number of all unique muts analysed that aren't clonal
 allmutnotclo <- length(unique(newallDF[which(newallDF$ClonalityRNA!='clonal'),'Locus']))
@@ -165,7 +165,7 @@ probmat[,'Clonal'] <- mutmat[,'Clonal']/sum(mutmat[,'Clonal'])*100
 probmat[,'Subclonal'] <- mutmat[,'Subclonal']/sum(mutmat[,'Subclonal'])*100
 
 # Plot Figure 5F
-pdf('figures/fig5F.clonality_chiplot.pdf',height=8,width=5)
+pdf('figures/figR22F.clonality_chiplot.pdf',height=8,width=5)
 par(mar=c(3,4.5,3,1),font=2,font.axis=2,font.lab=2,cex.axis=2);options(scipen=1)
 xx <- barplot(probmat[2,],beside=F,ylim=c(0,4),border=NA,axes=F,horiz=F,las=1,col=c(wes_palette("Cavalcanti1")[1],wes_palette("GrandBudapest2")[4]))
 axis(side=2,cex.axis=1.75,line=0,las=2)
@@ -176,7 +176,7 @@ dev.off()
 
 
 ## Calculate the proportion of eQTLs that are phylo, and split by clonality
-### Figure 5G
+### Figure R22G
 ```{r new_eqtl_vs_phylo_vs_clonality}
 # Load recurrence of phylogenetic genes result
 phylogen <- readRDS('results/reccurent_phylogenetic_genes.rds')
@@ -255,8 +255,8 @@ mat[1,1] <- allphysig['Non','eQTL']/sum(allphysig['Non',])*100;mat[1,2] <- allph
 mat[2,1] <- clophysig['Non','eQTL']/sum(clophysig['Non',])*100;mat[2,2] <- clophysig['Phylo','eQTL']/sum(clophysig['Phylo',])*100
 mat[3,1] <- subphysig['Non','eQTL']/sum(subphysig['Non',])*100;mat[3,2] <- subphysig['Phylo','eQTL']/sum(subphysig['Phylo',])*100
 
-# Plot Figure 5G
-pdf('figures/fig5G.qtl_vs_phylo_chiplot.pdf',height=8)
+# Plot Figure R22G
+pdf('figures/figR22G.qtl_vs_phylo_chiplot.pdf',height=8)
 par(mar=c(3,4,3,1),font=2,font.axis=2,font.lab=2,cex.axis=1.5)
 xx <- barplot(t(mat),beside=T,ylim=c(0,7),border=c(wes_palette("Cavalcanti1")[c(2,2)],wes_palette("Cavalcanti1")[c(1,1)],wes_palette("GrandBudapest2")[c(4,4)]),axes=F,horiz=F,las=1,density=c(NA,20,NA,20),
               col=c(wes_palette("Cavalcanti1")[c(2,2)],wes_palette("Cavalcanti1")[c(1,1)],wes_palette("GrandBudapest2")[c(4,4)]))

@@ -337,11 +337,11 @@ for(pat in patrna) {
 matchpat <- patrna[which(patrna %in% patdna)]
 ```
 
-## Plot correlation between DNA and RNA intermixing scores - Figure S13
+## Plot correlation between DNA and RNA intermixing scores - Figure S9
 ```{r plot_intermixing_scores}
 res <- lm(rnamix[matchpat]~newmix[matchpat]);sumres <- summary(res)
 
-pdf('figures/figS13.mixing_score_DNA_vs_RNA.pdf')
+pdf('figures/figS9.mixing_score_DNA_vs_RNA.pdf')
 par(mar=c(5,5,2,1),font.axis=2,font=2,font.lab=2,cex.axis=1.3)
 plot(newmix[matchpat],rnamix[matchpat],pch=16,cex.lab=1.5,bty='n',cex=1.5,las=1,col='white',
      xlab='Phylogenetic tree intermixing score',ylab='Gene expression dendrogram intermixing score',xlim=c(0,0.3),ylim=c(0,1))

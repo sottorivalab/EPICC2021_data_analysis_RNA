@@ -110,12 +110,12 @@ saveRDS(pathway_lambda_list,file='results/pathway_lambda_data.rds')
 ```
 
 ## Analyse and plot the results of the phylogenetic pathway enrichment analysis
-### Figure 1L&M and Figure S10
+### Figure 1J and Extended Data Figure 4
 ```{r plot_phylogenetic_pathway_results}
 reclam <- matrix(0L,nrow=nrow(pathdf),ncol=length(tinfo$patients))
 colnames(reclam) <- tinfo$patients;row.names(reclam) <- row.names(pathdf)
 recstars <- recpval <- reclam
-pdf('figures/fig1LM&S10.lambda_analysis_pathways.pdf',height=8,width=5)
+pdf('figures/fig1J&ED4.lambda_analysis_pathways.new.pdf',height=7,width=10)
 for(pat in tinfo$patients) {
   resdf <- pathway_lambda_list[[pat]]
   try <- pathway_lambda_enrich[[pat]]
@@ -127,9 +127,6 @@ for(pat in tinfo$patients) {
   recpval[row.names(combdf),pat] <- combdf$MedPval
   
   trimtree <- treelist[[pat]][[1]]
-  # code to get dendrogram from tree
-  #tmpdend <- phylogram::as.dendrogram(trimtree);dendlist[[pat]] <- tmpdend
-  seldf <- combdf[which(combdf$combstars!=''),]
   
   regions <- gsub('^(\\S)\\d+_\\S+','\\1',trimtree$tip.label)
   options(scipen = -1);par(mar=c(0,0,2,0),xpd=T)
@@ -137,27 +134,18 @@ for(pat in tinfo$patients) {
              font=2,cex=0.9,tip.color=regcol[c(regions,'Root')],label.offset=20)
   title(main=pat)
   explot <- try
+  
+  # Change pathway names to numbers for editing (font size) reasons
+  colnames(explot) <- row.names(combdf) <- c(1:ncol(explot))
+  
   explot <- scale_mat(explot,'column')
   explot <- explot[c(nrow(explot):1),order(combdf$MedPval,decreasing=T)]
   mybreaks <- seq(floor(min(explot)),ceiling(max(explot)),by=0.05)
   pheatmap(explot,show_rownames = F,show_colnames=T,cluster_rows=F,cluster_cols=F,treeheight_col=0,
-           border_color=NA,fontsize = 6,fontsize_col = 3,
+           border_color=NA,fontsize = 6,fontsize_col = 6,
            color=wes_palette("Zissou1", length(mybreaks)-1, type = "continuous"),breaks=mybreaks,
            annotation_col=combdf[,c('MedLambda','MedPval','Class','Group')],
            annotation_colors=col_list)
-  
-  if(nrow(seldf)>1) {
-    seldf <- dplyr::arrange(seldf,Group,desc(Mean_Var))
-    explot <- try[,row.names(seldf)]
-    explot <- scale_mat(explot,'column')
-    explot <- explot[c(nrow(explot):1),order(seldf$MedPval,decreasing=T)]
-    mybreaks <- seq(floor(min(explot)),ceiling(max(explot)),by=0.05)
-    pheatmap(explot,show_rownames = F,show_colnames=T,cluster_rows=F,cluster_cols=F,treeheight_col=0,
-             border_color=NA,fontsize = 6,fontsize_col = 3,
-             color=wes_palette("Zissou1", length(mybreaks)-1, type = "continuous"),breaks=mybreaks,
-             annotation_col=seldf[,c('MedLambda','MedPval','Class','Group')],
-             annotation_colors=col_list)
-  }
 }
 dev.off()
 
@@ -166,14 +154,14 @@ saveRDS(pathdf,'results/reccurent_phylogenetic_pathways.rds')
 ```
 
 ## Plot phylogenetic recurrence of pathways
-### Figure 1N
+### Figure 1K
 ```{r plot_rec_phylo}
 geneanot <- pathdf[row.names(reclam),c('Num_Sig','Group','Class')]
 sortreclam <- reclam[order(geneanot$Num_Sig,geneanot$Group,decreasing=T),]
 sortrecstars <- recstars[order(geneanot$Num_Sig,geneanot$Group,decreasing=T),]
 sortrecpval <- recpval[order(geneanot$Num_Sig,geneanot$Group,decreasing=T),]
 
-pdf('figures/fig1N.recurrent_pathways_lambda.pdf')
+pdf('figures/fig1K.recurrent_pathways_lambda.pdf')
 mybreaks <- seq(0,ceiling(max(sortrecpval)),by=0.01)
 pheatmap(sortrecpval,show_rownames=T,show_colnames=T,cluster_rows=F,cluster_cols=T,
          border_color=NA,fontsize = 6,fontsize_col=9,fontsize_row=5,
@@ -181,6 +169,21 @@ pheatmap(sortrecpval,show_rownames=T,show_colnames=T,cluster_rows=F,cluster_cols
          display_numbers=sortrecstars,fontsize_number=6,
          annotation_row=geneanot,
          annotation_colors=col_list)
+dev.off()
+
+tmpgeneanot <- pathdf[row.names(reclam),c('Num_Sig','Group','Class')];row.names(tmpgeneanot) <- c(1:nrow(tmpgeneanot))
+tmpreclam <- reclam;tmprecstars <- recstars;tmprecpval <- recpval
+row.names(tmpreclam) <- row.names(tmprecstars) <- row.names(tmprecpval) <- c(1:nrow(tmpreclam))
+sortreclam <- tmpreclam[order(tmpgeneanot$Num_Sig,tmpgeneanot$Group,decreasing=T),]
+sortrecstars <- tmprecstars[order(tmpgeneanot$Num_Sig,tmpgeneanot$Group,decreasing=T),]
+sortrecpval <- tmprecpval[order(tmpgeneanot$Num_Sig,tmpgeneanot$Group,decreasing=T),]
+
+pdf('figures/fig1K.recurrent_pathways_lambda.alternative.pdf',height=8,width=3.5)
+mybreaks <- seq(0,ceiling(max(sortrecpval)),by=0.01)
+pheatmap(sortrecpval,show_rownames=T,show_colnames=T,cluster_rows=F,cluster_cols=T,legend = F,
+         border_color=NA,fontsize=15,fontsize_col=20,fontsize_row=10,treeheight_col = 15,
+         color=wes_palette("Zissou1", length(mybreaks)-1, type = "continuous"),breaks=mybreaks,
+         display_numbers=sortrecstars,fontsize_number=20)
 dev.off()
 ```
 

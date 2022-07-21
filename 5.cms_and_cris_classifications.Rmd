@@ -71,10 +71,10 @@ for(i in c(1:length(patients))) {
 ```
 
 ## Plot results of CMS and CRIS classification
-## Figure S4 A-C
+## Extended Data Figure 2 A-C
 ```{r plot_cms_and_cris}
-# Plot all CMS and CRIS results - Figure S4 A&B
-pdf('figures/figS2AB.cms_and_cris_results.pdf')
+# Plot all CMS and CRIS results - Extended Data Figure 2 A&B
+pdf('figures/EDfig2AB.cms_and_cris_results.pdf')
 par(mar=c(4.5,4.5,3,1),font=2,font.axis=2,cex.axis=1.35)
 cmsplot <- t(patRes[,grep('CMS',colnames(patRes))])
 barplot(cmsplot,col=colcms,border=NA,ylim=c(0,40),las=2)
@@ -97,14 +97,14 @@ for(i in c(1:nrow(patRes))) {
   }
 }
 
-# Plot heatmap of CMS vs CRIS - Figure S4C
-pdf('figures/figS4C.cmscris_heatmap.pdf')
+# Plot heatmap of CMS vs CRIS - Extended Data Figure 2C
+pdf('figures/EDfig2C.cmscris_heatmap.pdf')
 pheatmap(t(patRes[,c(1:9)]),scale='column',fontsize=15,cellwidth=20,cellheight=40)
 dev.off()
 ```
 
 ## Analyse and plot enrichment of gene groups vs classifications
-## Figure S4D
+## Extended Data Figure 2D
 ```{r gene_groups_vs_classifications}
 # Determine the number of genes used in CMS and CRIS classification
 # which belong to each gene group
@@ -131,8 +131,8 @@ for(i in c(1:4)) {
 }
 sigs <- c();for(p in p.adjust(c(enrichCMS$pval,enrichCRIS$pval),method='fdr')) { sigs <- c(sigs,getstars(p)) }
 
-# Plot Figure S4D
-pdf('figures/figS4D.groupenrichmentCMSCRIS.pdf')
+# Plot Extended Data Figure 2D
+pdf('figures/EDfig2D.groupenrichmentCMSCRIS.pdf')
 par(mar=c(5,5.1,1,0.6),font.lab=2,cex.axis=1.5,font.axis=2,font=2)
 xx <- barplot(rbind(enrichCMS$OR,enrichCRIS$OR),beside=T,axes=F,las=2,density=rep(c(NA,20),4),
               col=rep(ngroupcol,each=2),border=rep(ngroupcol,each=2),ylim=c(0,2.2));abline(h=1,lty=3,lwd=2)
@@ -167,10 +167,10 @@ for(i in c(1:length(patients))) {
 ```
 
 ## Plot results of CMS and CRIS classification - only confident calls
-## Figure S4 E&F
+## Extended Data Figure 2 E&F
 ```{r plot_cms_and_cris_confident}
-# Plot all CMS and CRIS results - Figure S4 A&B
-pdf('figures/figS4EF.cms_and_cris_confident_results.pdf')
+# Plot confident-only CMS and CRIS results - Extended Data Figure 2 E&F
+pdf('figures/EDfig2EF.cms_and_cris_confident_results.pdf')
 par(mar=c(4.5,4.5,3,1),font=2,font.axis=2,cex.axis=1.35)
 cmsplot <- t(patRes[,grep('CMS',colnames(patRes))])
 barplot(cmsplot,col=colcms,border=NA,ylim=c(0,40),las=2)
@@ -184,27 +184,14 @@ mtext(side=2,text='Number of samples',line=2.75,font=2,xpd=T,cex=1.35)
 text(x=10,y=42,labels='CRIS',font=2,xpd=T,cex=1.4)
 legend(x=0,y=41,bty='n',pt.cex=2,cex=1.1,fill=colcris[1:5],legend=c('CRIS-A','CRIS-B','CRIS-C','CRIS-D','CRIS-E'),border=NA,xpd=T)
 dev.off()
-
-# Get proportions per tumour for plotting
-propRes <- patRes
-for(i in c(1:nrow(patRes))) {
-  for(j in c(1:ncol(patRes))) {
-    propRes[i,j] <- patRes[i,j]/patRes$NumSam[i]
-  }
-}
-
-# Plot heatmap of CMS vs CRIS - Figure S4C
-pdf('figures/figS4C.cmscris_heatmap.pdf')
-pheatmap(t(patRes[,c(1:9)]),scale='column',fontsize=15,cellwidth=20,cellheight=40)
-dev.off()
 ```
 
 ## Plot heatmap results
-## Figure S4 G&H
-```{r plot_cms_and_cris_confident}
-# Plot heatmpas of CMS/CRIS centroid distances for each tumour (use C550 as example for Figure S4 G&H)
+## Extended Data Figure 2 G&H
+```{r plot_cms_and_cris_centroids}
+# Plot heatmpas of CMS/CRIS centroid distances for each tumour (use C550 as example for Extended Data Figure 2 G&H)
 mybreaks <- seq(0.6,0.8,by=0.005)
-pdf('figures/figS4GH.cms_and_cris_distance_heatmaps.pdf',height=17,width=4)
+pdf('figures/EDfig2GH.cms_and_cris_distance_heatmaps.pdf',height=17,width=4)
 for(pat in patients) {
   patcmsdf <- cms[grep(pat,row.names(cms)),]
   

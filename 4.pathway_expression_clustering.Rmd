@@ -153,7 +153,7 @@ sortsdmat <- arrange(sortsdmat,pathdf$Group,desc(pathdf$Mean_Var))
 sortsdmat <- sortsdmat[,samord]
 ```
 
-## Plot clustering results (Figure S3 A-C)
+## Plot clustering results (Extended Data Figure 1 A-C)
 ```{r plot_clustering}
 patdf <- data.frame(MSI_Status=ifelse(colnames(expmat) %in% msipat,'MSI','MSS'))
 row.names(patdf) <- colnames(expmat)
@@ -161,7 +161,7 @@ explot <- scale_mat(sortexpmat,'column')
 sdplot <- scale_mat(sortsdmat,'column')
 mybreaks <- seq(floor(min(explot,sdplot)),ceiling(max(explot,sdplot)),by=0.05)
 
-pdf('figures/figS3A.expression.pathway.pdf',height=8,width=4)
+pdf('figures/EDfig1A.expression.pathway.pdf',height=8,width=4)
 pheatmap(explot,show_rownames=F,cluster_rows=F,cluster_cols=F,fontsize_row=7,
          gaps_col=15,fontsize_col=10,border_color=NA,fontsize=8,legend=F,
          color=wes_palette("Zissou1", length(mybreaks)-1,type="continuous"),breaks=mybreaks,
@@ -170,7 +170,7 @@ pheatmap(explot,show_rownames=F,cluster_rows=F,cluster_cols=F,fontsize_row=7,
          annotation_colors=col_list,annotation_legend=F)
 dev.off()
 
-pdf('figures/figS3A.standarddeviation.pathway.pdf',height=7.5,width=5)
+pdf('figures/EDfig1A.standarddeviation.pathway.pdf',height=7.5,width=5)
 pheatmap(sdplot,show_rownames=T,cluster_rows=F,cluster_cols=F,fontsize_row=7,
          gaps_col=15,fontsize_col=10,border_color=NA,fontsize=8,
          color=wes_palette("Zissou1", length(mybreaks)-1,type="continuous"),breaks=mybreaks,
@@ -180,7 +180,7 @@ pheatmap(sdplot,show_rownames=T,cluster_rows=F,cluster_cols=F,fontsize_row=7,
 dev.off()
 
 # Exploring Group
-pdf('figures/figS3BC.exploring_groups.pathway.pdf',width=4,height=4)
+pdf('figures/EDfig1BC.exploring_groups.pathway.pdf',width=4,height=4)
 groupdf <- pathdf
 groupdf$Pathway <- row.names(groupdf)
 par(mfrow=c(1,1),font=2,font.axis=2,font.lab=2,
@@ -200,7 +200,7 @@ mtext(side=1,at=c(1:4),text=paste0('n=',as.numeric(table(groupdf$Group))),line=2
 dev.off()
 ```
 
-## Perform and plot fishers test on pathway groups vs classes (Figure S3D)
+## Perform and plot fishers test on pathway groups vs classes (Figure ED1D)
 ```{r fisher_groups_vs_classes}
 pval <- matrix(0L,nrow=length(unique(pathdf$Class)),ncol=4);colnames(pval) <- c(1:4)
 row.names(pval) <- unique(pathdf$Class)
@@ -217,7 +217,7 @@ for(cat in unique(pathdf$Class)) {
   }
 }
 
-pdf('figures/figS3D.fisher_tests_group_vs_class.pdf',height=8,width=6)
+pdf('figures/EDfig1D.fisher_tests_group_vs_class.pdf',height=8,width=6)
 options(scipen=-2)
 sigcats <- c('Group2:Oncogenic','Group4:Stromal')
 upcats <- c(sigcats,'Group3:Immune')
