@@ -13,7 +13,7 @@ library(phytools);library(DESeq2);library(org.Hs.eg.db);library(phangorn);librar
 ngroupcol= c(wes_palette("Darjeeling2",5)[2],wes_palette('Darjeeling1',5)[2],wes_palette('FantasticFox1',5)[5])
 names(ngroupcol) <- as.numeric(c(1:3))
 col_list <- list(Group=ngroupcol)
-string_db <- STRINGdb$new(version="11",species=9606,score_threshold=200, input_directory="~/Dropbox (Personal)/Mac/Documents/EPICC/PurityAdjust/stringdb_dir/") #input_directory="<path_to_downloaded_string_db_database>")
+string_db <- STRINGdb$new(version="11",species=9606,score_threshold=200,input_directory="<path_to_downloaded_string_db_database>")
 ```
 
 ## Load tree and expression data
@@ -79,6 +79,8 @@ genedf <- genedf[which(genedf$Group!='4'),]
 reclam <- matrix(0L,nrow=nrow(genedf),ncol=length(tinfo$patients))
 colnames(reclam) <- tinfo$patients;row.names(reclam) <- row.names(genedf)
 recstars <- recpval <- recadjstar <- reclam
+
+compiled_resdf <- genedf
 pdf('figures/fig1EF&ED3.lambda_analysis_genes.pdf',height=8,width=5)
 for(pat in tinfo$patients) {
   resdf <- gene_lambda_list[[pat]]
@@ -97,6 +99,8 @@ for(pat in tinfo$patients) {
   row.names(try) <- gsub('C\\d+_(\\S+)','\\1',row.names(try))
   
   seldf <- combdf[which(combdf$LamPval<0.05),]
+  compiled_resdf[[paste0(pat,'_lambda')]] <- combdf$MedLambda
+  compiled_resdf[[paste0(pat,'_pval')]] <- combdf$LamPval
   
   regions <- gsub('^(\\S)\\d+_\\S+','\\1',trimtree$tip.label)
   options(scipen = -1);par(mar=c(0,0,2,0),xpd=T)
@@ -121,6 +125,8 @@ for(pat in tinfo$patients) {
   }
 }
 dev.off()
+
+saveRDS(compiled_resdf,file='results/compiled_gene_lambda_data.rds')
 
 recsave <- genedf;recsave$NumRec <- rowSums(recstars!='')
 saveRDS(recsave,file='results/reccurent_phylogenetic_genes.rds')

@@ -89,14 +89,6 @@ text(x=10,y=42,labels='CRIS',font=2,xpd=T,cex=1.4)
 legend(x=0,y=41,bty='n',pt.cex=2,cex=1.1,fill=colcris[1:5],legend=c('CRIS-A','CRIS-B','CRIS-C','CRIS-D','CRIS-E'),border=NA,xpd=T)
 dev.off()
 
-# Get proportions per tumour for plotting
-propRes <- patRes
-for(i in c(1:nrow(patRes))) {
-  for(j in c(1:ncol(patRes))) {
-    propRes[i,j] <- patRes[i,j]/patRes$NumSam[i]
-  }
-}
-
 # Plot heatmap of CMS vs CRIS - Extended Data Figure 2C
 pdf('figures/EDfig2C.cmscris_heatmap.pdf')
 pheatmap(t(patRes[,c(1:9)]),scale='column',fontsize=15,cellwidth=20,cellheight=40)

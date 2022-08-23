@@ -16,7 +16,7 @@ regcol <- c(A='#E31A1C',B='#377DB8',C='#4DAE49',D='#904A9A',Root='#808080');rcol
 # 1) Load tree info
 treelist <- readRDS('intermediates/pgls.trees.rds')
 tinfo <- readRDS('intermediates/pgls.infotrees.rds')
-dendlist <- lapply(treelist,function(x) { phylogram::as.dendrogram(x[[1]])} )
+dendlist <- lapply(treelist,function(x) { as.dendrogram.phylo(x[[1]])} )
 
 # 2) Load DESeq2 normalised gene expression
 vsd <- readRDS('intermediates/allgenes.vsd.ensembl.rds')
@@ -35,13 +35,13 @@ dnarna <- dnasam$Sample[which(dnasam$Sample %in% samples)]
 ## Plot DNA phylogenies as dendrograms, clustered heatmaps and get tanglegram statistics
 ### Extended Data Figure 5 (deconstructed)
 ```{r plot_dna_get_stats}
-cophcors <- c()
+cophcors <- entangles <- c()
 pdf('figures/EDfig5.expressed_dnatree_expclust_tangles.pdf',height=8,width=5)
 for(pat in tinfo$patients) {
   
   trimtree <- treelist[[pat]][[1]]
   treesam <- paste0(pat,'_',trimtree$tip.label)
-  try <- as.data.frame(t(geneexp[genedf$ensembl_gene_id,treesam]))
+  try <- as.data.frame(t(geneexp[genedf[which(genedf$Group!='4'),'ensembl_gene_id'],treesam]))
   row.names(try) <- gsub('C\\d+_(\\S+)','\\1',row.names(try))
   
   # Plot DNA phylogeny
